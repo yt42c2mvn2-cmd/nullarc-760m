@@ -1,0 +1,75 @@
+{
+  "candidate_plugin_sha256": "036d108a02635b3538857306e2d1eab5b8e185b5719ac00c396cfed82dc498fa",
+  "boot_session_uuid": "55D5B89D-8B3A-4847-99D3-C2E1D9D80AE8",
+  "scope": "Isolated probe processes on healthy actual HP queues; installed plugin unchanged",
+  "tests": [
+    {
+      "mode": "render",
+      "seconds": 1.3823968949999998,
+      "returncode": 0,
+      "readback": "pixels: red 32640 blue 32896 other 0 (expect ~32896 red, ~32640 blue); corners: TL 0xff0000ff BL 0xffff0000 BR 0xff0000ff",
+      "largest_logged_submit_gap_us": 0.0
+    },
+    {
+      "mode": "render",
+      "seconds": 0.7633975740000003,
+      "returncode": 0,
+      "readback": "pixels: red 32640 blue 32896 other 0 (expect ~32896 red, ~32640 blue); corners: TL 0xff0000ff BL 0xffff0000 BR 0xff0000ff",
+      "largest_logged_submit_gap_us": 0.0
+    },
+    {
+      "mode": "textures",
+      "seconds": 0.8055038259999998,
+      "returncode": 0,
+      "readback": "PASS: observed tiled layouts, contents updates and aligned buffer alias read back correctly",
+      "largest_logged_submit_gap_us": 4139.2
+    },
+    {
+      "mode": "fetch",
+      "seconds": 0.982317643,
+      "returncode": 0,
+      "readback": "fetch missing attachment: 4096/4096 correct, first 0xff802040",
+      "largest_logged_submit_gap_us": 12523.6
+    },
+    {
+      "mode": "surface",
+      "seconds": 0.8487615010000003,
+      "returncode": 0,
+      "readback": "IOSurface CPU-to-GPU 1920x1200: all pixels match",
+      "largest_logged_submit_gap_us": 25771.8
+    },
+    {
+      "mode": "lifetime",
+      "seconds": 0.8619491930000001,
+      "returncode": 0,
+      "readback": "PASS: 128 asynchronous fill/copy submissions survived source-wrapper release; every byte matched",
+      "largest_logged_submit_gap_us": 6940.6
+    }
+  ],
+  "pipeline_timings_ms": [
+    {
+      "stage": "graphics-icd",
+      "cold": 3.173,
+      "warm": 2.519
+    },
+    {
+      "stage": "graphics-total",
+      "cold": 74.808,
+      "warm": 55.799
+    }
+  ],
+  "corner_capture": {
+    "size": [
+      32,
+      32
+    ],
+    "top_left_device_rgb": [
+      0.2939895689487457,
+      0.21644288301467896,
+      0.07599494606256485
+    ],
+    "first_six_pixels_equal": true,
+    "white_pixel_seen_in_this_compositor_capture": false,
+    "physical_scanout_pixel_not_read": true
+  }
+}

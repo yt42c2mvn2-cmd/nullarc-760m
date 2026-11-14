@@ -1301,3 +1301,40 @@ for 'failed', with no OOM/VK_ERROR/unsupported messages in the last 2 MiB.
 That is not proof that every app works. WindowServer used about 73% of one CPU
 in an uncontrolled two-second sample. Timer VBL/CPU copying and unresolved Safari
 hover latency/game tearing remain; brightness is deferred at the user's request.
+
+### Startup copy update verified; latency and isolated pipeline diagnostics
+
+The HP subsequently booted with the standard installer update. The launch daemon
+points to package-startup-hzi9b2q7, whose 90-file manifest matches the beta source
+776fd94491946e6a15162b58f4f95adcf8d0add9. Boot
+55D5B89D-8B3A-4847-99D3-C2E1D9D80AE8 reports native/Metal/app readiness and live
+desktop presents, with no failed transaction. The supervisor recorded the PCI
+aperture and streaming copy settings; live sysctls are alias=0 and SSE=1. The
+copy selection is now installed and verified across reboot. Display arming
+remains explicitly one-shot.
+
+The user reports delayed desktop icons/menu bar, abnormal fullscreen transitions,
+and one white pixel at the physical top-left. In one 32x32 compositor capture,
+the top-left pixel matches its neighbors and is not white. This does not identify
+or rule out a physical scanout/cursor defect. No pixel masking, register writes,
+new power/clock settings or brightness implementation were added. Power/thermal
+management and brightness remain deferred at the user's request.
+
+A diagnostic plugin adds bounded pipeline timings, separating total pipeline
+preparation from the ICD call. Normal logging reports only calls at least 100 ms;
+NVMTL_PIPELINE_TIMING=1 includes fast calls, with 128 records per process maximum.
+An observed profiler defect is fixed: overlapping submissions subtracted an
+unsigned earlier timestamp from a later completion, printing gaps near 2^64.
+The profiler now clamps overlaps to zero and never moves its completion watermark
+backwards. A regression covers reordered completion and 100000 overlaps.
+
+The Sequoia plugin compiled. The complete make test suite passes. Isolated HP
+candidate processes passed render twice, textures, framebuffer fetch, IOSurface
+sharing and lifetime readbacks, without changing the installed driver. Graphics
+ICD calls measured 3.17/2.52 ms, while whole pipeline preparation took 74.81/55.80
+ms. These small authored shaders do not explain WindowServer's extended delay.
+Existing sampled WindowServer shader/reflection cache hits were under 2 ms.
+Evidence: sequoia-latency49.json. The read-only hp_latency_capture.py collector
+has been staged for local-sudo startup/cache, reservation and WindowServer stack
+capture. It neither installs a candidate nor initializes the GPU. That protected
+capture is still pending; the reported visual/performance bugs are not fixed.

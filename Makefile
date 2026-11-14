@@ -16,7 +16,8 @@ TESTS = $(TEST_BIN_DIR)/test_rdna3_discovery_uma \
         $(TEST_BIN_DIR)/test_phx_vbios \
         $(TEST_BIN_DIR)/test_phx_vram_arena \
         $(TEST_BIN_DIR)/test_phx_hp_display \
-        $(TEST_BIN_DIR)/test_nvmtl_memory_policy
+        $(TEST_BIN_DIR)/test_nvmtl_memory_policy \
+        $(TEST_BIN_DIR)/test_nvmtl_timing
 
 .PHONY: all test clean kext fixtures
 
@@ -59,6 +60,9 @@ $(TEST_BIN_DIR)/test_phx_firmware_file: tests/test_phx_firmware_file.cpp tools/p
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
 $(TEST_BIN_DIR)/test_nvmtl_memory_policy: tests/test_nvmtl_memory_policy.cpp src/nmplugin/nvmtl_memory_policy.h src/nmplugin/nvmtl_texture_layout.h | $(TEST_BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
+
+$(TEST_BIN_DIR)/test_nvmtl_timing: tests/test_nvmtl_timing.cpp src/nmplugin/nvmtl_timing.h | $(TEST_BIN_DIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
 build/tools/phxfw: tools/phxctl/phxfw.cpp src/amd/rdna3_ucode_extract.cpp src/amd/rdna3_ucode_extract.h src/amd/rdna3_ucode_psp.h
