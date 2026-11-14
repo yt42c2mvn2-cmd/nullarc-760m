@@ -1,0 +1,39 @@
+{
+  "automatic_initialization_attempted": true,
+  "desktop_armed": false,
+  "boot_session_uuid": "5BA4BD11-1D2B-4FE8-860C-DC5A7B9EDF91",
+  "startup_stage": "complete",
+  "returncode": 0,
+  "native_compute_verified": true,
+  "native_render_verified": true,
+  "metal_verified": true,
+  "last_stage": "accelerator-claim",
+  "native_initialization_verified": true,
+  "verification_phase": "complete",
+  "metal_validation_uid": 501,
+  "metal_readbacks_verified": true,
+  "console_uid_after_validation": 501,
+  "apps_enabled": true,
+  "desktop_phase": "app-only-verified",
+  "metal_stages": [
+    {
+      "stage": "metal-hp-device",
+      "returncode": 0
+    },
+    {
+      "stage": "metal-compute-readback",
+      "returncode": 0
+    },
+    {
+      "stage": "metal-render-readback",
+      "returncode": 0
+    }
+  ],
+  "recorded_at": "2026-11-14T15:51:18.716518+00:00",
+  "scope": "Actual HP app-only cold recovery boot; persistent display retest pending",
+  "startup_patch_commit": "010610d5d80da11f16663ffbda1bd6fb6d0cb7f1",
+  "native_groups_unchanged": 11,
+  "plugin_radv_translator_match_installed_package": true,
+  "display_preflight_passed": true,
+  "early_efi_metadata_matches_without_writes": true
+}

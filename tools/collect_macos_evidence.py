@@ -43,6 +43,18 @@ def pci_number(value):
     return int.from_bytes(value, 'little') if isinstance(value, bytes) else value
 
 
+def target_policy(nodes):
+    identities=[]
+    for n in walk(nodes):
+        v=pci_number(n.get('vendor-id'));d=pci_number(n.get('device-id'))
+        if v==0x1002 and d in (0x1900,0x1901,0x15bf,0x15c8):
+            identities.append(tuple(pci_number(n.get(k)) for k in EXPECTED))
+    hp=tuple(EXPECTED.values());reference=(0x1002,0x1900,0xba,0x8001,0x2014)
+    if identities==[hp]:return 'hp-diagnostic-only'
+    if identities==[reference]:return 'reference-profile'
+    return 'unreviewed-amd-diagnostic-only' if identities else 'other-device'
+
+
 def capture(nodes):
     matching = [n for n in walk(nodes) if all(pci_number(n.get(k)) == v for k,v in EXPECTED.items())]
     devices = []
@@ -70,11 +82,12 @@ if __name__ == '__main__':
     p = subprocess.run(['ioreg','-a','-l','-r','-c','IOPCIDevice'], capture_output=True)
     try:
         if p.returncode: raise ValueError('ioreg failed')
-        devices = capture(plistlib.loads(p.stdout))
+        nodes=plistlib.loads(p.stdout)
+        devices = capture(nodes)
     except (ValueError,TypeError,KeyError,plistlib.InvalidFileException) as e:
         ap.exit(1,f'Cannot determine target policy: {e}\n')
     if a.target_policy:
-        print('hp-diagnostic-only' if devices else 'other-device')
+        print(target_policy(nodes))
         raise SystemExit(0)
     a.output.mkdir(parents=True, exist_ok=False)
     report = {'format':1,'captured_at':datetime.now(timezone.utc).isoformat(),

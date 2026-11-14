@@ -16,9 +16,10 @@ H=/System/Library/CoreServices/CoreTypes.bundle/Contents/Library/PhxGPU
 L=/Library/GPUBundles
 TS=$(date +%Y%m%d-%H%M%S)
 
-WS=0; CHECK=0; DIAG=0; COMPONENTS=0; HP_NATIVE=0; FRESH=0; OC=""
+WS=0; CHECK=0; DIAG=0; COMPONENTS=0; HP_NATIVE=0; FRESH=0; OC=""; REPORT=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --hardware-report) [ "$#" -ge 2 ] || { echo "--hardware-report needs a new report filename" >&2; exit 2; }; REPORT=$2; shift ;;
         --windowserver) WS=1 ;;
         --check) CHECK=1 ;;
         --diagnostics) DIAG=1 ;;
@@ -28,6 +29,7 @@ while [ "$#" -gt 0 ]; do
         --oc) [ "$#" -ge 2 ] || { echo "--oc needs an EFI/OC directory" >&2; exit 2; }; OC=$2; shift ;;
         -h|--help)
             echo 'Usage: ./install.sh --check [--windowserver]'
+            echo '       ./install.sh --hardware-report ~/nullarc-hardware.json (read-only; no sudo)'
             echo '       sudo ./install.sh --windowserver  (HP staged one-shot display experiment)'
             echo '       sudo ./install.sh --diagnostics --oc /Volumes/EFI/EFI/OC [--check]'
             echo '       sudo ./install.sh --components  (HP files only; no automatic activation)'
@@ -38,6 +40,12 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
+if [ -n "$REPORT" ]; then
+    if [ "$WS$CHECK$DIAG$COMPONENTS$HP_NATIVE$FRESH" != 000000 ] || [ -n "$OC" ]; then
+        echo '--hardware-report cannot be combined with installation modes' >&2; exit 2
+    fi
+    exec python3 -B "$SRC/collect_hardware.py" --output "$REPORT"
+fi
 if [ "$HP_NATIVE" = 1 ] && { [ "$COMPONENTS" = 1 ] || [ "$DIAG" = 1 ] || [ "$WS" = 1 ] || [ -n "$OC" ]; }; then
     echo '--hp-native cannot be combined with component, diagnostic or WindowServer modes' >&2; exit 2
 fi
@@ -77,9 +85,15 @@ if [ "$POLICY" = hp-diagnostic-only ]; then
         [ "$MODE" = --check ] || HP_ARGS+=(--install)
         exec python3 -B "$SRC/install_hp_windowserver.py" "${HP_ARGS[@]}"
     fi
-    echo 'HP Radeon 760M: WindowServer acceleration is not verified; the reference boot path is unavailable.' >&2
+    echo 'HP Radeon 760M: use the guarded HP app/display stages; the reference path is unavailable.' >&2
     echo 'After native bootstrap and Metal tests, use --hp-native for app-only automatic initialization.' >&2
     echo 'Use sudo ./install.sh --diagnostics --oc /Volumes/EFI/EFI/OC instead.' >&2
+    exit 1
+fi
+
+if [ "$POLICY" != reference-profile ]; then
+    echo 'No reviewed native board profile: acceleration installation is blocked.' >&2
+    echo 'Run python3 collect_hardware.py --output ~/nullarc-hardware.json for read-only evidence.' >&2
     exit 1
 fi
 

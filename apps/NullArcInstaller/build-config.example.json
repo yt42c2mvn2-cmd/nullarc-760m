@@ -1,0 +1,12 @@
+{
+  "min_macos": "15.0",
+  "sdk": "/absolute/path/to/MacKernelSDK",
+  "vulkan_headers": "/absolute/path/to/Vulkan-Headers",
+  "translator_source": "/absolute/path/to/translator-source",
+  "glslang": "/absolute/path/to/glslangValidator",
+  "mesa": "/absolute/path/to/patched-mesa",
+  "mesa_build": "/absolute/path/to/patched-mesa/build",
+  "air_runtime": "/absolute/path/to/AIR-runtime-bundle",
+  "dependency_notices": "/absolute/path/to/third-party-notices",
+  "output": "/absolute/path/to/new-compiled-package"
+}

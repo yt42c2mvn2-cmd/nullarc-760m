@@ -1,11 +1,6 @@
 name: Append WindowServer persistence installer to existing beta release
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/publish-persistent-windowserver.yml'
-      - 'tools/release/publish_persistent_windowserver.py'
   workflow_dispatch:
 
 permissions:

@@ -1,15 +1,6 @@
 name: Append backed-up fresh-file installer to existing Sequoia beta
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/publish-fresh-files.yml'
-      - 'tools/release/publish_fresh_files.py'
-      - 'install/install_components.py'
-      - 'install/install.sh'
-      - 'docs/INSTALL.md'
-      - 'tests/test_component_install.py'
   workflow_dispatch:
 
 permissions:

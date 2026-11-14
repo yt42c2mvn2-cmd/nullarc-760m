@@ -21,6 +21,8 @@
 #include "nvmtl_tex_upload.h"
 #include "nvmtl_cmd_refusal.h"
 #include "nvmtl_sampler_state.h"
+#include "nvmtl_timing.h"
+#include "nvmtl_pipeline_cache_io.h"
 static int g_sampler_anisotropy, g_sampler_mirror_clamp;
 static int g_scalar_layout;
 
@@ -230,7 +232,7 @@ void nvmtl_vk_counts(uint64_t *bm, uint64_t *bg, uint64_t *im, uint64_t *ig, siz
 #define DEVICE_FNS(X) X(vkGetDeviceQueue) X(vkCreateBuffer) X(vkGetBufferMemoryRequirements) X(vkAllocateMemory) \
     X(vkBindBufferMemory) X(vkMapMemory) X(vkUnmapMemory) X(vkCreateImage) X(vkGetImageMemoryRequirements) X(vkBindImageMemory) \
     X(vkCreateImageView) X(vkCreateRenderPass) X(vkCreateFramebuffer) X(vkCreateShaderModule) X(vkDestroyShaderModule) X(vkCreatePipelineLayout) X(vkDestroyPipelineLayout) \
-    X(vkDestroyPipeline) X(vkDestroyRenderPass) X(vkCreateGraphicsPipelines) X(vkCreateComputePipelines) X(vkCmdDispatch) X(vkCmdPushConstants) X(vkCreateCommandPool) X(vkAllocateCommandBuffers) X(vkBeginCommandBuffer) \
+    X(vkCreatePipelineCache) X(vkGetPipelineCacheData) X(vkDestroyPipelineCache) X(vkDestroyPipeline) X(vkDestroyRenderPass) X(vkCreateGraphicsPipelines) X(vkCreateComputePipelines) X(vkCmdDispatch) X(vkCmdPushConstants) X(vkCreateCommandPool) X(vkAllocateCommandBuffers) X(vkBeginCommandBuffer) \
     X(vkCmdBeginRenderPass) X(vkCmdBindPipeline) X(vkCmdDraw) X(vkCmdEndRenderPass) X(vkEndCommandBuffer) \
     X(vkQueueSubmit) X(vkQueueBindSparse) X(vkCreateFence) X(vkWaitForFences) X(vkResetFences) X(vkDestroyFence) X(vkCmdCopyImageToBuffer) X(vkCmdCopyBufferToImage) X(vkCmdCopyBuffer) \
     X(vkCmdPipelineBarrier) X(vkCmdClearColorImage) X(vkCmdClearDepthStencilImage) X(vkDeviceWaitIdle) X(vkFreeCommandBuffers) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdSetPrimitiveTopology) X(vkCmdSetPrimitiveRestartEnable) X(vkCmdBindVertexBuffers) X(vkCreateDescriptorSetLayout) X(vkCreateDescriptorPool) X(vkDestroyDescriptorPool) X(vkDestroyDescriptorSetLayout) X(vkAllocateDescriptorSets) X(vkUpdateDescriptorSets) X(vkCmdBindDescriptorSets) X(vkCreateSampler) X(vkDestroySampler) X(vkFreeDescriptorSets) X(vkCmdSetBlendConstants) X(vkCmdSetStencilReference) X(vkCmdSetDepthBias) X(vkCmdFillBuffer) X(vkCmdBindIndexBuffer) X(vkCmdDrawIndexed) X(vkCmdCopyImage) X(vkCmdBlitImage) X(vkGetBufferDeviceAddress) X(vkCmdWriteTimestamp) X(vkCreateQueryPool) X(vkCmdResetQueryPool) X(vkCmdBeginQuery) X(vkCmdEndQuery) X(vkCmdCopyQueryPoolResults) X(vkGetQueryPoolResults) X(vkDestroyQueryPool) X(vkResetQueryPool) X(vkCmdDrawIndirect) X(vkCmdDrawIndexedIndirect) X(vkCmdDispatchIndirect) X(vkCmdSetCullMode) X(vkCmdSetFrontFace) X(vkCmdSetDepthTestEnable) X(vkCmdSetDepthWriteEnable) X(vkCmdSetDepthCompareOp) \
@@ -434,13 +436,112 @@ static VkResult nvmtl_opaque_CreateCommandPool(VkDevice dev, const VkCommandPool
     if (result == VK_SUCCESS) *out = handle;
     return result;
 }
+/* Mesa refuses disk caching for mixed real/effective IDs. Keep that policy intact;
+ * this explicit Vulkan cache uses only the effective user's private Darwin cache. */
+static VkPipelineCache g_pipeline_cache;
+static nvmtl_pc_identity g_pipeline_identity;
+static int g_pipeline_dir = -1;
+static dispatch_queue_t g_pipeline_io;
+static char g_pipeline_file[64];
+static _Atomic unsigned long g_pipeline_generation;
+static _Atomic int g_pipeline_scheduled;
+static unsigned long g_pipeline_saved;
+static char g_pipeline_queue_key;
+static void nvmtl_pipeline_save(void)
+{
+    const unsigned long generation = atomic_load_explicit(&g_pipeline_generation, memory_order_relaxed);
+    if (!g_pipeline_cache || generation == g_pipeline_saved) return;
+    size_t size = 0;
+    if (pvkGetPipelineCacheData(g_dev, g_pipeline_cache, &size, NULL) != VK_SUCCESS ||
+        size < 32 || size > NVMTL_PC_MAX) return;
+    void *data = malloc(size);
+    if (!data) return;
+    VkResult r = pvkGetPipelineCacheData(g_dev, g_pipeline_cache, &size, data);
+    if (r == VK_SUCCESS && !nvmtl_pc_write(g_pipeline_dir, g_pipeline_file, data, size, &g_pipeline_identity)) {
+        g_pipeline_saved = generation;
+        static unsigned logged;
+        if (logged++ < 8) nvlog("pipeline-cache: saved %zu bytes generation %lu", size, generation);
+    }
+    free(data);
+}
+static void nvmtl_pipeline_exit(void)
+{
+    if (!g_pipeline_io) return;
+    if (dispatch_get_specific(&g_pipeline_queue_key)) nvmtl_pipeline_save();
+    else dispatch_sync(g_pipeline_io, ^{ nvmtl_pipeline_save(); });
+}
+static void nvmtl_pipeline_changed(void)
+{
+    if (!g_pipeline_io) return;
+    atomic_fetch_add_explicit(&g_pipeline_generation, 1, memory_order_relaxed);
+    if (atomic_exchange_explicit(&g_pipeline_scheduled, 1, memory_order_relaxed)) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), g_pipeline_io, ^{
+        nvmtl_pipeline_save();
+        atomic_store_explicit(&g_pipeline_scheduled, 0, memory_order_relaxed);
+    });
+}
+static void nvmtl_pipeline_cache_init(const VkPhysicalDeviceProperties *properties)
+{
+    if (!pvkCreatePipelineCache || !pvkGetPipelineCacheData || !pvkDestroyPipelineCache) return;
+    const char *option = getenv("NVMTL_PIPELINE_CACHE");
+    if (properties->vendorID != 0x1002 || (option && !strcmp(option, "0")) ||
+        (!(option && !strcmp(option, "1")) && getuid() == geteuid() && getgid() == getegid())) return;
+    char base[PATH_MAX];
+    size_t length = confstr(_CS_DARWIN_USER_CACHE_DIR, base, sizeof base);
+    if (!length || length > sizeof base || !base[0]) return;
+    size_t n = strlen(base); while (n && base[n-1] == '/') base[--n] = 0;
+    int parent = open(base, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat st;
+    if (parent < 0) return;
+    if (fstat(parent, &st) || st.st_uid != geteuid() || (st.st_mode & 0022)) { close(parent); return; }
+    if (mkdirat(parent, "nvmtl-pipelines", 0700) && errno != EEXIST) { close(parent); return; }
+    int dir = openat(parent, "nvmtl-pipelines", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    close(parent);
+    if (!nvmtl_pc_private_fd(dir, 1)) { if (dir >= 0) close(dir); return; }
+    g_pipeline_identity.vendor = properties->vendorID; g_pipeline_identity.device = properties->deviceID;
+    memcpy(g_pipeline_identity.uuid, properties->pipelineCacheUUID, 16);
+    for (unsigned i = 0; i < 16; ++i) snprintf(g_pipeline_file + i*2, 3, "%02x", properties->pipelineCacheUUID[i]);
+    strlcat(g_pipeline_file, ".v1.bin", sizeof g_pipeline_file);
+    size_t size = 0;
+    void *data = nvmtl_pc_read(dir, g_pipeline_file, &g_pipeline_identity, &size);
+    VkPipelineCacheCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, NULL, 0, size, data };
+    VkResult result = pvkCreatePipelineCache(g_dev, &info, NULL, &g_pipeline_cache);
+    free(data);
+    if (result != VK_SUCCESS && size) {
+        size = 0; info.initialDataSize = 0; info.pInitialData = NULL;
+        result = pvkCreatePipelineCache(g_dev, &info, NULL, &g_pipeline_cache);
+    }
+    if (result != VK_SUCCESS) { g_pipeline_cache = VK_NULL_HANDLE; close(dir); return; }
+    g_pipeline_dir = dir;
+    g_pipeline_io = dispatch_queue_create("nvmtl.pipeline-cache", DISPATCH_QUEUE_SERIAL);
+    if (!g_pipeline_io) { pvkDestroyPipelineCache(g_dev, g_pipeline_cache, NULL); g_pipeline_cache = VK_NULL_HANDLE; close(dir); g_pipeline_dir = -1; return; }
+    dispatch_queue_set_specific(g_pipeline_io, &g_pipeline_queue_key, &g_pipeline_queue_key, NULL);
+    atexit(nvmtl_pipeline_exit);
+    nvlog("pipeline-cache: loaded %zu bytes; private effective UID %u, real UID %u", size, (unsigned)geteuid(), (unsigned)getuid());
+}
+/* Bounded diagnostics only: these timestamps do not change pipeline scheduling. */
+static void nvmtl_pipeline_trace(const char *stage, uint64_t begin, int result)
+{
+    const uint64_t end = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
+    const uint64_t ns = nvmtl_elapsed_ns(begin, end);
+    const char *all = getenv("NVMTL_PIPELINE_TIMING");
+    if (ns < 100000000ull && !(all && all[0] && all[0] != '0')) return;
+    static _Atomic unsigned logged;
+    if (atomic_fetch_add_explicit(&logged, 1, memory_order_relaxed) >= 128) return;
+    nvlog("pipeline-time: %s %.3f ms start_us %llu end_us %llu result %d", stage,
+          (double)ns / 1000000.0, (unsigned long long)(begin / 1000),
+          (unsigned long long)(end / 1000), result);
+}
 static VkResult nvmtl_opaque_CreateGraphicsPipelines(VkDevice dev, VkPipelineCache cache, uint32_t count, const VkGraphicsPipelineCreateInfo *info, const VkAllocationCallbacks *allocator, void **out)
 {
     if (count != 1) return VK_ERROR_INITIALIZATION_FAILED;
     VkPipeline handle = VK_NULL_HANDLE;
     VkGraphicsPipelineCreateInfo pinfo;
     if (g_pstat) { pinfo = *info; pinfo.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR; info = &pinfo; }
-    VkResult result = pvkCreateGraphicsPipelines(dev, cache, count, info, allocator, &handle);
+    const uint64_t started = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
+    VkResult result = pvkCreateGraphicsPipelines(dev, cache ? cache : g_pipeline_cache, count, info, allocator, &handle);
+    nvmtl_pipeline_trace("graphics-icd", started, result);
+    if (result == VK_SUCCESS && !cache) nvmtl_pipeline_changed();
     if (result == VK_SUCCESS) *out = handle;
     else if (handle) pvkDestroyPipeline(dev, handle, allocator);
     return result;
@@ -478,7 +579,10 @@ static VkResult nvmtl_opaque_CreateComputePipelines(VkDevice dev, VkPipelineCach
 {
     if (count != 1) return VK_ERROR_INITIALIZATION_FAILED;
     VkPipeline handle = VK_NULL_HANDLE;
-    VkResult result = pvkCreateComputePipelines(dev, cache, count, info, allocator, &handle);
+    const uint64_t started = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
+    VkResult result = pvkCreateComputePipelines(dev, cache ? cache : g_pipeline_cache, count, info, allocator, &handle);
+    nvmtl_pipeline_trace("compute-icd", started, result);
+    if (result == VK_SUCCESS && !cache) nvmtl_pipeline_changed();
     if (result == VK_SUCCESS) *out = handle;
     else if (handle) pvkDestroyPipeline(dev, handle, allocator);
     return result;
@@ -1008,6 +1112,7 @@ static int nvmtl_vk_initialize(void)
                                1, &qci, 0, NULL, next, next ? exts : NULL, &enabled };
     VKCK(pvkCreateDevice(g_pdev, &dci, NULL, &g_dev), "vkCreateDevice");
     DEVICE_FNS(LOAD_D)
+    nvmtl_pipeline_cache_init(&pp);
     if (g_pstat) { p_pstat_props = (PFN_vkGetPipelineExecutablePropertiesKHR)pvkGetDeviceProcAddr(g_dev, "vkGetPipelineExecutablePropertiesKHR");
                    p_pstat_stats = (PFN_vkGetPipelineExecutableStatisticsKHR)pvkGetDeviceProcAddr(g_dev, "vkGetPipelineExecutableStatisticsKHR");
                    if (!p_pstat_props || !p_pstat_stats) g_pstat = 0;
@@ -2767,12 +2872,11 @@ static void nvmtl_perf_submit(unsigned sets, const uint64_t *pt)
     static const char *const nm[NVP_N] = { "begin", "bufnew", "bufpool", "bufdel", "heap", "syncin", "syncout", "copy" };
     char s[640]; int k = 0; s[0] = 0;
     pthread_mutex_lock(&g_perf_lock);
-    const double gap = !g_perf_kind && g_perf_last ? (double)(pt[0] - g_perf_last) / 1e3 : 0;
+    const double gap = !g_perf_kind ? nvmtl_submit_gap_us(pt[0], pt[7], &g_perf_last) : 0;
     for (int i = 0; i < NVP_N; i++) if (g_perf[i].n && k < (int)sizeof s - 64)
         k += snprintf(s + k, sizeof s - (size_t)k, " %s %llu:%.1f:%lluK", nm[i], (unsigned long long)g_perf[i].n,
                       (double)g_perf[i].ns / 1e3, (unsigned long long)(g_perf[i].bytes >> 10));
     memset(g_perf, 0, sizeof g_perf);
-    if (!g_perf_kind) g_perf_last = pt[7];
     pthread_mutex_unlock(&g_perf_lock);
     fprintf(stderr, "PERFSUB k%d sets %u gap %.1f hook %.1f end %.1f fence %.1f submit %.1f wait %.1f retire %.1f wit %llu:%llu:%llu:%llu ctl %llu/%llu |%s\n",
             g_perf_kind, sets, gap, (double)(pt[1] - pt[0]) / 1e3, (double)(pt[2] - pt[1]) / 1e3, (double)(pt[3] - pt[2]) / 1e3,
@@ -4101,7 +4205,9 @@ static int nvmtl_vk_pipeline_create_impl(const void *vs, size_t vn, const void *
                                          const void *vin_, uint32_t samples, const nvk_tess_desc *td, const nvk_rt *rt, void *out_)
 {
     nvk_pipeline pending = {0};
+    const uint64_t started = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
     int result = nvmtl_vk_pipeline_create_impl_lifetime_body(vs, vn, fs, fn, vkfmt, depthfmt, blend_, vin_, samples, td, rt, &pending);
+    nvmtl_pipeline_trace("graphics-total", started, result);
     if (result) { nvmtl_failed_pipeline(&pending); memset(out_, 0, sizeof pending); }
     else *(nvk_pipeline *)out_ = pending;
     return result;
@@ -4354,7 +4460,9 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
 static int nvmtl_vk_compute_pipeline_create_g(const void *cs, size_t n, uint32_t flags, nvk_pipeline *out)
 {
     nvk_pipeline pending = {0};
+    const uint64_t started = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
     int result = nvmtl_vk_compute_pipeline_create_g_lifetime_body(cs, n, flags, &pending);
+    nvmtl_pipeline_trace("compute-total", started, result);
     if (result) { nvmtl_failed_pipeline(&pending); memset(out, 0, sizeof pending); }
     else *(nvk_pipeline *)out = pending;
     return result;

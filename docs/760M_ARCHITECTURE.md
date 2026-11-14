@@ -288,7 +288,10 @@ reference-machine CVT defaults. Nominal pixel clock is labelled accordingly.
 verifies actual ABI/plan/current-boot Metal -> root-owned one-shot request/NVRAM ->
 `hp_boot.py` privileged native tests -> `hp_windowserver.py` exact pipe and AGDC
 registration -> release hold -> GUI Metal and present checks. GUI waiting cannot
-precede releasing the panel. The request is consumed, not automatically renewed.
+precede releasing the panel. The kernel consumes each request. With explicit
+persistent authorization, a fully verified boot schedules its successor. Pending
+initialization, failed readbacks, unverified presentation and new panic evidence
+block continuation; scheduling failures are recorded separately from GPU failures.
 A failed display boot disables GPU retries and requests a firmware-fallback reboot
 only when the custom framebuffer actually owns the panel. This preserves the
 existing reference-machine display path. Private method/offset compatibility,
@@ -315,3 +318,19 @@ v6.14 `dcn10_optc.c`/DCN 3.1.4 register definitions. The framebuffer base does n
 open its provider in those Apple sources; this matters because PhxBringup must
 still acquire exclusive PCI ownership later. Timing decode/capture provenance is
 in `hardware/profiles/hp-760m-display-registers.json`.
+
+## Hardware profiles and backlight bridge (source, 2026-11-14)
+
+`hardware/devices/registry.json` plus reviewed native contracts generate
+`phx_hardware_registry.inc` for PhxBringup/NMXAccel/PhxAMDFB and
+`phx_radv_profiles.h` for Mesa patch 0014. Common memory/display profile validators
+preserve the HP data while supporting explicit geometry, scanout offsets and
+reservation exclusions. Unknown devices cannot inherit reference initialization.
+The manufacturer-neutral collector reads existing OS interfaces; reports cannot
+authorize native initialization. Metal translation remains shared.
+
+PhxAMDFB optionally publishes the ACPI-backed `IODisplayParameterHandler` and
+native LCD/EDID interfaces; serialized worker transitions validate every brightness
+write with `_BQC`. Unsupported PWM/AUX/OEM-key paths remain diagnostic. No installed
+binary has changed and no physical brightness success is claimed. See
+[contracts, limitations and validation](HARDWARE_SUPPORT.md).

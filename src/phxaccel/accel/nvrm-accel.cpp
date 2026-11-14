@@ -1,4 +1,4 @@
-#include "../../amd/phx_hp_760m.h"
+#include "../../amd/phx_hardware_profile.h"
 /*
  * NullMoth NVIDIA driver for macOS
  * Copyright (c) 2026 NullMoth Systems.
@@ -296,8 +296,9 @@ public:
     IOPCIDevice *fPCI = nullptr;
     bool fHPDisplayABI = false;
     bool isCapturedHP() const {
-        return fPCI && phx_topology_matches(&phx_hp_760m,fPCI->configRead16(0),fPCI->configRead16(2),
-            fPCI->configRead8(8),fPCI->configRead16(0x2c),fPCI->configRead16(0x2e));
+        const auto *p=fPCI?phxFindHardwareProfile(fPCI->configRead16(0),fPCI->configRead16(2),
+            fPCI->configRead8(8),fPCI->configRead16(0x2c),fPCI->configRead16(0x2e)):nullptr;
+        return p && p->backend==PhxCapturedNative;
     }
     void displayDiagnostics() {
         const char *names[]={"IOAccelDisplayMachine","IOAccelDisplayPipe"};
@@ -679,11 +680,18 @@ public:
     virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE {
         { if (nvrm_driver_off()) return false; }
 #ifdef NMX_ACCEL
+        if (IOPCIDevice *p=OSDynamicCast(IOPCIDevice,provider)) {
+            if (!phxProfileCanInitialize(phxFindHardwareProfile(p->configRead16(0),p->configRead16(2),
+                p->configRead8(8),p->configRead16(0x2c),p->configRead16(0x2e)))) return false;
+        }
+#endif
+#ifdef NMX_ACCEL
         if (IOPCIDevice *p = OSDynamicCast(IOPCIDevice, provider)) {
-            if (phx_topology_matches(&phx_hp_760m, p->configRead16(0), p->configRead16(2),
-                    p->configRead8(8), p->configRead16(0x2c), p->configRead16(0x2e)) &&
+            const auto *profile=phxFindHardwareProfile(p->configRead16(0),p->configRead16(2),
+                p->configRead8(8),p->configRead16(0x2c),p->configRead16(0x2e));
+            if (profile && profile->backend==PhxCapturedNative &&
                     (p->getProperty("nmxgpu-claimed")!=kOSBooleanTrue || p->getProperty("phx-diagnostic-only")!=kOSBooleanFalse)) {
-                ALOG("HP captured profile: accelerator requires validated native bring-up");
+                ALOG("Captured profile: accelerator requires validated native bring-up");
                 return false;
             }
         }

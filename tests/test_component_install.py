@@ -76,7 +76,7 @@ class ComponentTests(unittest.TestCase):
             ['/usr/bin/python3','-B',old+'/gpu/phxctl/hp_boot.py','--package',old]}))
         original=c.shutil.copytree
         def fail(*args,**kwargs):
-            if args[0]==self.package/c.TARGETS[1]:raise OSError('injected fresh copy failure')
+            if Path(args[0]).resolve()==(self.package/c.TARGETS[1]).resolve():raise OSError('injected fresh copy failure')
             return original(*args,**kwargs)
         with patch.object(c.shutil,'copytree',side_effect=fail),self.assertRaisesRegex(OSError,'injected fresh copy failure'):
             c.install(self.package,self.root,check=False,fresh=True)

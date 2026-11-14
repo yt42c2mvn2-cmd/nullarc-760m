@@ -1,7 +1,7 @@
 Phoenix (Radeon 780M, gfx1103) patches on top of Cobalt64's RADV Darwin port.
 
 Base: Mesa f5cb8ee032adabef599ae892ec4e42d796b84da9 + reference/Cobalt64/mesa-patches/0001..0009.
-Apply these after them (git am, 0001..0013).  0001..0003 are what tools/mesa_phoenix_canned.py,
+Apply these after them (git am, 0001..0014).  0001..0003 are what tools/mesa_phoenix_canned.py,
 tools/mesa_phoenix_identity.py and tools/mesa_phoenix_service.py produce (0003: open the PhxBringup service).
 0004 answers AMDGPU_INFO_TIMESTAMP from SMUIO GOLDEN_TSC (needs PhxBringup build 31): Metal GPUStartTime/GPUEndTime.
 0005 opens PhxBringup through NMXAccel when sandboxed (needs the PhxAccel proxy): Metal in WebKit's GPU process.
@@ -79,3 +79,16 @@ The roundtrip test above now covers 0007..0009. The separate Linux validation
 executes translated shaders on the HP with stock RADV, not this Darwin backend;
 see docs/LINUX_VALIDATION.md. Earlier vkprobe mock text describes compilation only;
 vkprobe now explicitly rejects software devices and returns failure on bad readback.
+
+0014 uses the shared reviewed hardware registry for measured device capabilities.
+     Full physical topology must match; unknown captured profiles fail DEV_INFO
+     rather than receiving reference clock/cache properties. The legacy 12-CU
+     fallback remains for the reference path. HP measured values are unchanged.
+Alternative after 0013 (not in addition to 0014):
+  python3 /path/to/nullarc-760m/tools/mesa_phoenix_profiles.py /path/to/mesa
+Regenerate src/amd/phx_radv_profiles.h with tools/phx_hardware_registry.py --write
+when adding a reviewed contract, and regenerate this patch with the same header.
+Host profile dispatch and patch/generator agreement against the 0013 baseline:
+  python3 tests/test_mesa_profile_registry.py --mesa /path/to/mesa
+This verifies no GPU execution. Other laptop manufacturers remain diagnostic-only
+until their native initialization and boot integration have hardware evidence.

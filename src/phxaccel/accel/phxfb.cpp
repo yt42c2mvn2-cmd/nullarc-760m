@@ -1,4 +1,4 @@
-#include "../../amd/phx_hp_760m.h"
+#include "../../amd/phx_hardware_profile.h"
 #include "../../amd/phx_hp_display.h"
 #include "../../phxbringup/PhxNativeABI.h"
 // PhxFB: the 780M's display as an IOFramebuffer that PhxAccel (NMXAccel) composites for WindowServer.
@@ -24,6 +24,8 @@
 #include <sys/sysctl.h>
 #include "nvrm_vram_abi.h"
 #include "nvrm_gpuva_abi.h"
+#include "phxbacklight.h"
+#include <IOKit/ndrvsupport/IOMacOSVideo.h>
 
 void phxAgdcInstall();   // phxagdc.cpp: the AppleGraphicsDeviceControl that reports this panel (debug.phxagdc)
 void phxAgdcRemove();
@@ -43,8 +45,9 @@ static unsigned phxBaseSize(const char *className) {
 // PCI open/bus-master changes, firmware execution, or register writes.
 static bool readHpConsole(IOPCIDevice *pci,phx_hp_display_plan &out) {
     out={};
-    if (!pci || !phx_topology_matches(&phx_hp_760m,pci->configRead16(0),pci->configRead16(2),
-        pci->configRead8(8),pci->configRead16(0x2c),pci->configRead16(0x2e))) return false;
+    const PhxHardwareProfile *profile=pci?phxFindHardwareProfile(pci->configRead16(0),pci->configRead16(2),
+        pci->configRead8(8),pci->configRead16(0x2c),pci->configRead16(0x2e)):nullptr;
+    if (!phxProfileCanInitialize(profile) || !profile->display) return false;
     const OSData *vfct=nullptr;
     for (IORegistryEntry *entry=pci;entry;entry=entry->getParentEntry(gIOServicePlane)) {
         if (auto *acpi=OSDynamicCast(IOACPIPlatformDevice,entry)) { vfct=acpi->getACPITableData("VFCT",0);break; }
@@ -73,14 +76,14 @@ static bool readHpConsole(IOPCIDevice *pci,phx_hp_display_plan &out) {
             (pass?b:a)[i]=regs[reg];
         }
         for (unsigned i=0;i<PHX_HP_DISPLAY_REG_COUNT && valid;++i) {
-            const auto reg=phx_hp_display_registers[i].dword;if (reg>=count) { valid=false;break; }
+            const auto reg=profile->display->addresses[i].dword;if (reg>=count) { valid=false;break; }
             (pass?tb:ta)[i]=regs[reg];
         }
     }
     mm->release();
     PE_Video console{};IOPlatformExpert *platform=IOService::getPlatform();
     return valid && platform && platform->getConsoleInfo(&console)==kIOReturnSuccess && console.v_baseAddr &&
-        phxHpDisplayPlan(memory,firmware,a,b,ta,tb,console.v_width,console.v_height,console.v_rowBytes,console.v_depth,out);
+        phxDisplayProfilePlan(memory,firmware,a,b,ta,tb,console.v_width,console.v_height,console.v_rowBytes,console.v_depth,*profile->display,out);
 }
 
 void phxFramebufferDiagnostics(IOPCIDevice *pci,IOService *accel) {
@@ -123,6 +126,7 @@ static struct sysctl_oid *const kFbOids[] = { &sysctl__debug_phxfb_alias, &sysct
 class PhxAMDFB : public IOFramebuffer {
     OSDeclareDefaultStructors(PhxAMDFB)
     IOPCIDevice *fPCI = nullptr;
+    IOService *fBacklight=nullptr;
     bool fHP=false;
     phx_hp_display_plan fHPPlan{};
     IOMemoryMap *fSurfMap = nullptr;   // write-combined CPU view of the scan-out surface through the BAR
@@ -396,12 +400,14 @@ public:
     // power and connection answers as NullMoth's NMIntelFB/NVRMFB give them: acknowledge at once, never queue on the
     // controller thread (a base-class power change waited 45 s for an acknowledge and froze WindowServer restarts)
     IOReturn setPowerState(unsigned long ordinal, IOService *) override {
+        if(fBacklight)phxBacklightPower(fBacklight,ordinal!=0);
         handleEvent(ordinal ? kIOFBNotifyDidPowerOn : kIOFBNotifyWillPowerOff);
         return kIOPMAckImplied;
     }
     IOReturn setAttribute(IOSelect attribute, uintptr_t value) override {
         if (attribute == kIOWindowServerActiveAttribute) return kIOReturnSuccess;
         if (attribute == kIOPowerAttribute) {
+            if(fBacklight)phxBacklightPower(fBacklight,value!=0);
             if (value) { IOReturn r = IOFramebuffer::setAttribute(attribute, value); handleEvent(kIOFBNotifyDidPowerOn);
                          return r == kIOReturnUnsupported ? kIOReturnSuccess : r; }
             handleEvent(kIOFBNotifyWillPowerOff);
@@ -414,6 +420,17 @@ public:
         if (attribute == kIOWindowServerActiveAttribute) { if (value) *value = 1; return kIOReturnSuccess; }
         return IOFramebuffer::getAttribute(attribute, value);
     }
+    bool hasDDCConnect(IOIndex idx) override {return !idx && fBacklight;}
+    IOReturn getDDCBlock(IOIndex idx,UInt32 block,IOSelect type,IOOptionBits,UInt8 *data,IOByteCount *length) override {
+        if(idx || block!=1 || type!=kIODDCBlockTypeEDID || !data || !length || *length<128 || !fBacklight)return kIOReturnUnsupported;
+        if(!phxBacklightEdid(fBacklight,data))return kIOReturnNotReady;
+        *length=128;return kIOReturnSuccess;
+    }
+    IOReturn getAppleSense(IOIndex idx,UInt32 *type,UInt32 *sense,UInt32 *extended,UInt32 *displayType) override {
+        if(idx || !fBacklight)return kIOReturnUnsupported;
+        if(type)*type=0;if(sense)*sense=0;if(extended)*extended=0;if(displayType)*displayType=kPanelTFTConnect;
+        return kIOReturnSuccess;
+    }
     IOReturn setAttributeForConnection(IOIndex idx, IOSelect attribute, uintptr_t value) override {
         switch (attribute) {
         case kConnectionPower: case kConnectionColorModesSupported: case kConnectionColorDepthsSupported:
@@ -424,7 +441,9 @@ public:
         }
     }
     IOReturn getAttributeForConnection(IOIndex idx, IOSelect attr, uintptr_t *value) override {
-        if (idx != 0 || !value) return kIOReturnBadArgument;
+        if (idx != 0) return kIOReturnBadArgument;
+        if(attr==kConnectionSupportsHLDDCSense)return fBacklight?kIOReturnSuccess:kIOReturnUnsupported;
+        if(!value)return kIOReturnBadArgument;
         switch (attr) {
         case kConnectionEnable: case kConnectionCheckEnable: *value = 1; return kIOReturnSuccess;
         case kConnectionFlags: *value = kIOConnectionBuiltIn; return kIOReturnSuccess;
@@ -540,9 +559,14 @@ static bool takeBootArming()
 bool PhxAMDFB::start(IOService *provider)
 {
     IOPCIDevice *profilePCI = OSDynamicCast(IOPCIDevice, provider);
-    fHP=profilePCI && phx_topology_matches(&phx_hp_760m,
-            profilePCI->configRead16(0), profilePCI->configRead16(2), profilePCI->configRead8(8),
-            profilePCI->configRead16(0x2c), profilePCI->configRead16(0x2e));
+    if (!profilePCI || !phxProfileCanInitialize(phxFindHardwareProfile(profilePCI->configRead16(0),
+        profilePCI->configRead16(2),profilePCI->configRead8(8),profilePCI->configRead16(0x2c),profilePCI->configRead16(0x2e)))) {
+        PFBLOG("unreviewed board; leaving firmware framebuffer");return false;
+    }
+    const auto *profile=phxFindHardwareProfile(profilePCI->configRead16(0),profilePCI->configRead16(2),
+        profilePCI->configRead8(8),profilePCI->configRead16(0x2c),profilePCI->configRead16(0x2e));
+    fHP=profile && profile->backend==PhxCapturedNative;
+    setProperty("PhxFBProfile",profile->name);
     char arg[8];
     if (PE_parse_boot_argn("-phxfboff", arg, sizeof arg)) { PFBLOG("-phxfboff: leaving the firmware framebuffer"); return false; }
     if (fHP) {
@@ -635,7 +659,12 @@ bool PhxAMDFB::start(IOService *provider)
     // callout dereferences it (IOFramebuffer::powerStateWillChangeTo, panic 2026-10-20)
     setProperty("IOFBDependentID", 0x50485846ull << 32 | 1, 64);   // 'PHXF'
     setProperty("IOFBDependentIndex", 0ull, 32);
-    if (!IOFramebuffer::start(provider)) { OSSafeReleaseNULL(fSurfMap); return false; }
+    // ACPI discovery queries only. A panel-bound saved level may be restored after validation.
+    fBacklight=phxBacklightCreate(fPCI,this,fWidth,fHeight);
+    if (!IOFramebuffer::start(provider)) {
+        if(fBacklight){phxBacklightDestroy(fBacklight,this);fBacklight=nullptr;}
+        OSSafeReleaseNULL(fSurfMap); return false;
+    }
     fVa = IORangeAllocator::withRange(kVaSize - 1, PAGE_SIZE, 0, IORangeAllocator::kLocking);
     poolInit();
     setProperty("built-in", kOSBooleanTrue);
@@ -643,7 +672,7 @@ bool PhxAMDFB::start(IOService *provider)
     measureRefresh();
     setProperty("PhxFBRefreshMilliHz", fRefreshMilliHz, 32);
     if (fHP) {
-        setProperty("PhxFBHP",true);setProperty("PhxFBTimingCaptured",true);
+        setProperty("PhxFBHP",!strcmp(profile->name,"hp-760m"));setProperty("PhxFBTimingCaptured",true);
         setProperty("PhxFBHSyncStart",fHPPlan.hsync_start,32);setProperty("PhxFBHSyncEnd",fHPPlan.hsync_end,32);
         setProperty("PhxFBVSyncStart",fHPPlan.vsync_start,32);setProperty("PhxFBVSyncEnd",fHPPlan.vsync_end,32);
         setProperty("PhxFBHSyncPositive",(fHPPlan.sync_polarity&1)!=0);setProperty("PhxFBVSyncPositive",(fHPPlan.sync_polarity&2)!=0);
@@ -669,6 +698,7 @@ bool PhxAMDFB::start(IOService *provider)
 void PhxAMDFB::stop(IOService *provider)
 {
     fStopping = true;
+    if(fBacklight){phxBacklightDestroy(fBacklight,this);fBacklight=nullptr;}
     phxAgdcRemove();
     if (fVblTimer) { thread_call_cancel(fVblTimer); while (!thread_call_free(fVblTimer)) { thread_call_cancel(fVblTimer); IOSleep(5); } fVblTimer = nullptr; }
     if (gAliasSysctl) { for (auto *o : kFbOids) sysctl_unregister_oid(o); gAliasSysctl = false; }

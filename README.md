@@ -4,6 +4,28 @@
 
 The implementation provides native GPU queues, a Metal-facing plugin implemented over Vulkan/Mesa RADV, and an opt-in accelerated WindowServer framebuffer. It incorporates derivative components from the original NullArc/NullMoth work; see [Licenses and attribution](#licenses-and-attribution).
 
+## New source preview — 0.3.0 (not an installable driver build)
+
+**[v0.3.0 Sequoia source preview](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases/tag/v0.3.0-sequoia-source-preview)**
+contains the source for the guarded WindowServer persistence repair,
+hardware-aware Radeon profiles/discovery and experimental native ACPI brightness bridge.
+Host tests and source compilation are documented, but the revised native kexts,
+Metal plugin and RADV have **not been re-packaged as a validated installable release**.
+Brightness operation and two consecutive accelerated persistence boots remain unverified
+on the actual HP. Other laptops remain diagnostic-only.
+
+Do **not** substitute the previous 0.2.0 compiled binaries for newly modified native
+code. For an already installed working HP build, keep using the pinned 0.2.0
+installer below until a matching rebuilt and hardware-validated package exists.
+
+See [0.3.0 preview release notes](docs/RELEASE_0.3.0_SOURCE_PREVIEW.md).
+
+## Native AppKit installer (alpha)
+
+**[Download the compiled NullArc Installer .app](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases/tag/v0.3.1-appkit-installer-alpha).** This small, ad-hoc-signed x86_64 AppKit utility is a frontend to the existing checked installation workflow: select a compiled release package, verify hashes, preview files/app-mode/WindowServer steps, and explicitly authorize the guarded install via the macOS administrator prompt. It can also invoke `tools/build_stack.py` to compile a complete driver package from a **separate source checkout and user-provided SDK/Mesa/translator/dependency paths**. It never silently bypasses failure markers, replaces active native drivers or arms WindowServer without explicit consent.
+
+**The app release contains only the GUI**, not rebuilt PhxAccel/PhxBringup/NVMTLDriver/RADV; the newer source preview is not an installable driver build. Read [AppKit installer/build instructions](docs/APPKIT_INSTALLER.md). Other laptops and Tahoe are not validated.
+
 ## Download — one current Sequoia installer
 
 **[Release v0.2.0 — Sequoia beta](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases/tag/v0.2.0-sequoia-beta)**
@@ -121,6 +143,14 @@ If an accelerated display boot fails, use the working recovery OpenCore/firmware
 To stop *future* persistent WindowServer arming from a healthy system, see [the cancellation procedure](docs/INSTALL.md#hp-experimental-windowserver-stages). The separate startup-readiness recovery tool is only for its specifically reviewed boot-registry failure signature; it is not a general repair command.
 
 ## Source and development
+
+The hardware-awareness branch adds reviewed kernel/RADV profiles, generic
+read-only discovery and a native ACPI backlight implementation. **These source
+changes are compiled and host-tested, not installed or hardware-verified.**
+Other manufacturers remain diagnostic-only; the HP profile and recovery flow
+are retained. PWM/AUX brightness and OEM-only key backends remain unfinished.
+See [hardware support and brightness status](docs/HARDWARE_SUPPORT.md).
+
 
 - [Bring-up and GPU memory](src/phxbringup)
 - [Accelerator, display pipe and framebuffer](src/phxaccel)

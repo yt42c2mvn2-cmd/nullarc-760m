@@ -1,0 +1,88 @@
+name: Build and publish lightweight AppKit installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-appkit-installer.yml'
+      - 'apps/NullArcInstaller/**'
+      - 'docs/APPKIT_INSTALLER.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nullarc760m-appkit-installer
+  cancel-in-progress: false
+
+jobs:
+  build-appkit:
+    if: github.repository == 'yt42c2mvn2-cmd/nullarc-760m'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run guarded startup and installer regressions
+        run: |
+          set -euo pipefail
+          python3 -B tests/test_hp_persistence.py
+          python3 -B tests/test_hp_boot.py
+          python3 -B tests/test_hp_windowserver.py
+          python3 -B tests/test_hp_arm_receipt.py
+          python3 -B tests/test_component_install.py
+
+      - name: Compile native x86_64 AppKit application
+        run: |
+          set -euo pipefail
+          /bin/bash apps/NullArcInstaller/build.sh "$PWD/build/apps"
+          /usr/bin/lipo -archs build/apps/NullArcInstaller.app/Contents/MacOS/NullArcInstaller | grep -Fx x86_64
+          /usr/bin/plutil -lint build/apps/NullArcInstaller.app/Contents/Info.plist
+          /usr/bin/codesign --verify --strict build/apps/NullArcInstaller.app
+
+      - name: Build and verify release archive
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ZIP=nullarc-760m-appkit-installer-v0.3.1-alpha.zip
+          /usr/bin/ditto -c -k --keepParent build/apps/NullArcInstaller.app "dist/$ZIP"
+          /usr/bin/unzip -tq "dist/$ZIP"
+          /usr/bin/unzip -Z1 "dist/$ZIP" | grep -Fxq "NullArcInstaller.app/Contents/MacOS/NullArcInstaller"
+          (cd dist && /usr/bin/shasum -a 256 "$ZIP" > SHA256SUMS-appkit &&
+             /usr/bin/shasum -a 256 -c SHA256SUMS-appkit)
+          echo "Native installer built and checked; no GPU binaries embedded."
+
+      - name: Publish installer-only alpha release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=v0.3.1-appkit-installer-alpha
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists. Refusing to replace existing signed-off asset."
+            exit 1
+          fi
+          gh release create "$TAG" \
+            dist/nullarc-760m-appkit-installer-v0.3.1-alpha.zip \
+            dist/SHA256SUMS-appkit \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "NullArc-760M 0.3.1 — lightweight AppKit installer (alpha)" \
+            --notes-file docs/APPKIT_INSTALLER.md \
+            --prerelease
+
+      - name: Confirm remote release is identical
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/remote
+          ZIP=nullarc-760m-appkit-installer-v0.3.1-alpha.zip
+          gh release download v0.3.1-appkit-installer-alpha \
+            --repo "$GITHUB_REPOSITORY" --pattern "$ZIP" --dir dist/remote
+          cp dist/SHA256SUMS-appkit dist/remote/
+          (cd dist/remote && /usr/bin/shasum -a 256 -c SHA256SUMS-appkit)
+          cmp "dist/$ZIP" "dist/remote/$ZIP"
+          echo "Published AppKit installer matches verified local build."

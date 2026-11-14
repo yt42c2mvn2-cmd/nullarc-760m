@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "backend": "phoenix-native39",
+  "gc_ip": [
+    11,
+    0,
+    1
+  ],
+  "dcn_ip": [
+    3,
+    1,
+    4
+  ],
+  "topology_source": "hardware/profiles/hp-760m.json",
+  "headers": [
+    "phx_hp_760m.h",
+    "phx_hp_display.h"
+  ],
+  "topology_symbol": "phx_hp_760m",
+  "memory_symbol": "phx_hp_memory_profile",
+  "display_symbol": "phx_hp_display_profile",
+  "validation": "Existing HP native39 backend; profile matching is separate from runtime readiness.",
+  "device_info_source": "hardware/dumps/hp_envy_760m/linux-2026-11-08.json"
+}

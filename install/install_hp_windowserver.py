@@ -115,11 +115,10 @@ def main():
     daemon=Path('/Library/LaunchDaemons/local.nullarc.hp-native.plist')
     if parent.is_symlink() or parent.stat().st_uid!=0 or parent.stat().st_mode&0o022:raise ValueError('unsafe immutable package directory')
     original,config,old=configured_package(daemon,parent)
-    for name in ('pending','disabled',display.REQUEST,display.PERSISTENT):
+    for name in ('pending','disabled'):
         if (state/name).exists():raise ValueError('review existing boot/failure/request marker before changing display mode: '+name)
     if Path('/Library/LaunchDaemons/local.phxboot.plist').exists():raise ValueError('conflicting reference boot service')
     nv=plistlib.loads(subprocess.check_output(['/usr/sbin/nvram','-xp'],timeout=5))
-    if 'phxfb-boot' in nv:raise ValueError('existing framebuffer NVRAM request must be reviewed first')
     active_display=bool(display.nodes('PhxAMDFB'))
     for name in NATIVE:
         if name=='Library/Extensions/PhxAccel.kext':continue
@@ -136,6 +135,7 @@ def main():
         return
     verify_existing_native(package if running else old)
     if running:
+        display.validate_schedule(state,expected)
         display.require_library_policy()
         display.validated_accelerator()
         status=json.loads(Path('/Users/Shared/nullarc-hp-native-status.json').read_text())
@@ -169,6 +169,8 @@ def main():
         display.authorize_persistent(state,expected)
         print('WindowServer persistence enabled. Reboot with the same USB. Each fully verified display boot arms the next; a failure cancels persistence and returns to firmware scanout.')
         return
+    if any((state/n).exists() for n in (display.REQUEST,display.PERSISTENT)) or 'phxfb-boot' in nv:
+        raise ValueError('review the existing persistent schedule before changing the accelerator')
     if active_display:raise ValueError('loaded accelerator update requires a firmware-framebuffer boot')
     if inventory(target)!=inventory(old/'Library/Extensions/PhxAccel.kext'):raise ValueError('installed module differs from verified app package')
     subprocess.run(['/usr/bin/codesign','--verify','--strict',str(source)],check=True,timeout=15)

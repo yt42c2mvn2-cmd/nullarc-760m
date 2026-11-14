@@ -1,0 +1,71 @@
+{
+  "collected": "2026-11-14",
+  "scope": "Read-only HP audit; no installed code/configuration/state modified",
+  "current_boot": "7141F5AC-5040-477D-B7C9-2C8C99D1A16A",
+  "current_framebuffer": "firmware; no PhxAMDFB or NMXAccel attached",
+  "current_native_stage": "profile-diagnostic-only",
+  "current_display_counters": "unavailable; not evidence of zero failed transactions",
+  "current_nvram_display_request": false,
+  "markers": {
+    "pending": true,
+    "disabled": true,
+    "windowserver-persistent.json": false,
+    "windowserver-next-boot.json": false
+  },
+  "recent_boots": [
+    {
+      "boot_session_uuid": "14F4EA29-B28A-4847-9BFD-5E249EB2D375",
+      "native_initialization_verified": true,
+      "metal_verified": false,
+      "desktop_present_verified": null,
+      "desktop_present_count": null,
+      "desktop_present_delta": null,
+      "desktop_failed_transactions": null,
+      "desktop_persistent_rearmed": null,
+      "verification_phase": "awaiting-console-session",
+      "error": null
+    },
+    {
+      "boot_session_uuid": "2AE890AF-17E6-46B3-A150-8C82ACF7D85F",
+      "native_initialization_verified": true,
+      "metal_verified": true,
+      "desktop_present_verified": true,
+      "desktop_present_count": 1224,
+      "desktop_present_delta": 34,
+      "desktop_failed_transactions": 0,
+      "desktop_persistent_rearmed": true,
+      "verification_phase": "complete",
+      "error": null
+    },
+    {
+      "boot_session_uuid": "B7DC7642-C84B-4368-BF97-203520D5FAA9",
+      "native_initialization_verified": true,
+      "metal_verified": true,
+      "desktop_present_verified": true,
+      "desktop_present_count": 899,
+      "desktop_present_delta": 28,
+      "desktop_failed_transactions": 0,
+      "desktop_persistent_rearmed": true,
+      "verification_phase": "complete",
+      "error": null
+    },
+    {
+      "boot_session_uuid": "82B0193C-2244-40BD-876F-D98F78CAD1FB",
+      "native_initialization_verified": true,
+      "metal_verified": true,
+      "desktop_present_verified": true,
+      "desktop_present_count": 472,
+      "desktop_present_delta": 17,
+      "desktop_failed_transactions": 0,
+      "desktop_persistent_rearmed": true,
+      "verification_phase": "complete",
+      "error": null
+    }
+  ],
+  "conclusion": "Three fully verified boots rearmed. The successor report ended awaiting console-session validation; pending survived and subsequent boots disabled/cancelled persistence. Cause of the interruption is not established.",
+  "installed_script_sha256": {
+    "hp_boot": "6737b7173b86f695f4af55141192915423e90d85dac06e2a2b70d15f0191980f",
+    "hp_windowserver": "034da0aa94e2747aa09fd7d01f9f1df224cec691b9b9204e4a36f8d576e025a1",
+    "install_hp_windowserver": "35aab161e5a253ff36dcb1b61a92507ac14ec5c12bdaf9c7a877f173446184b0"
+  }
+}

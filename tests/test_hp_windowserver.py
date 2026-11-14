@@ -176,7 +176,7 @@ class DisplayTests(unittest.TestCase):
             self.assertEqual((state/d.REQUEST).stat().st_mode&0o777,0o600)
             run.assert_called_once_with(['/usr/sbin/nvram','phxfb-boot=1'],check=True,timeout=5)
 
-    def test_rearm_only_for_matching_permanent_authorization(self):
+    def test_rearm_requires_current_success_and_matching_authorization(self):
         with tempfile.TemporaryDirectory() as tmp:
             state=Path(tmp)
             with patch.object(d,'arm_next_boot') as arm:
@@ -184,8 +184,9 @@ class DisplayTests(unittest.TestCase):
                 arm.assert_not_called()
             (state/d.PERSISTENT).write_text('{}')
             with patch.object(d,'_read_root_record',return_value={'format':1,'accelerator_uuid':'MATCH'}),patch.object(d,'macho_uuid',return_value='MATCH'),patch.object(d,'arm_next_boot') as arm:
-                self.assertTrue(d.rearm_if_permanent(state,state))
-                arm.assert_called_once_with(state,'MATCH')
+                with self.assertRaisesRegex(ValueError,'current-boot'):
+                    d.rearm_if_permanent(state,state)
+                arm.assert_not_called()
             with patch.object(d,'_read_root_record',return_value={'format':1,'accelerator_uuid':'OTHER'}),patch.object(d,'macho_uuid',return_value='MATCH'),patch.object(d,'arm_next_boot') as arm,self.assertRaisesRegex(ValueError,'differs'):
                 d.rearm_if_permanent(state,state)
             arm.assert_not_called()

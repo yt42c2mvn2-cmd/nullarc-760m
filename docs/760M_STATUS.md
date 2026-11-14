@@ -1301,3 +1301,272 @@ for 'failed', with no OOM/VK_ERROR/unsupported messages in the last 2 MiB.
 That is not proof that every app works. WindowServer used about 73% of one CPU
 in an uncontrolled two-second sample. Timer VBL/CPU copying and unresolved Safari
 hover latency/game tearing remain; brightness is deferred at the user's request.
+
+### Startup copy update verified; latency and isolated pipeline diagnostics
+
+The HP subsequently booted with the standard installer update. The launch daemon
+points to package-startup-hzi9b2q7, whose 90-file manifest matches the beta source
+776fd94491946e6a15162b58f4f95adcf8d0add9. Boot
+55D5B89D-8B3A-4847-99D3-C2E1D9D80AE8 reports native/Metal/app readiness and live
+desktop presents, with no failed transaction. The supervisor recorded the PCI
+aperture and streaming copy settings; live sysctls are alias=0 and SSE=1. The
+copy selection is now installed and verified across reboot. Display arming
+remains explicitly one-shot.
+
+The user reports delayed desktop icons/menu bar, abnormal fullscreen transitions,
+and one white pixel at the physical top-left. In one 32x32 compositor capture,
+the top-left pixel matches its neighbors and is not white. This does not identify
+or rule out a physical scanout/cursor defect. No pixel masking, register writes,
+new power/clock settings or brightness implementation were added. Power/thermal
+management and brightness remain deferred at the user's request.
+
+A diagnostic plugin adds bounded pipeline timings, separating total pipeline
+preparation from the ICD call. Normal logging reports only calls at least 100 ms;
+NVMTL_PIPELINE_TIMING=1 includes fast calls, with 128 records per process maximum.
+An observed profiler defect is fixed: overlapping submissions subtracted an
+unsigned earlier timestamp from a later completion, printing gaps near 2^64.
+The profiler now clamps overlaps to zero and never moves its completion watermark
+backwards. A regression covers reordered completion and 100000 overlaps.
+
+The Sequoia plugin compiled. The complete make test suite passes. Isolated HP
+candidate processes passed render twice, textures, framebuffer fetch, IOSurface
+sharing and lifetime readbacks, without changing the installed driver. Graphics
+ICD calls measured 3.17/2.52 ms, while whole pipeline preparation took 74.81/55.80
+ms. These small authored shaders do not explain WindowServer's extended delay.
+Existing sampled WindowServer shader/reflection cache hits were under 2 ms.
+Evidence: sequoia-latency49.json. The read-only hp_latency_capture.py collector
+has been staged for local-sudo startup/cache, reservation and WindowServer stack
+capture. It neither installs a candidate nor initializes the GPU. That protected
+capture is still pending; the reported visual/performance bugs are not fixed.
+
+### Captured freeze paths and private explicit pipeline cache candidate
+
+The local-sudo latency49 report was collected successfully. WindowServer's actual
+credentials are effective UID/GID 88 and real UID/GID 0. Its Mesa cache directory
+contained zero files. Mesa disk_cache_enabled() refuses mixed credentials through
+__normal_user(), so choosing a writable path alone cannot enable that cache.
+The ten-second sample contains RADV graphics pipeline compilation, SPIR-V-to-NIR
+and NIR optimization stacks. Later driver logs report six new fixed fragment
+function-constant variants taking 7.27–8.04 seconds each to translate. Expensive
+first-use specialization is therefore present independently of disk caching.
+Evidence: hardware/dumps/hp_envy_760m/sequoia-latency50.json. The user also reports
+applications freezing temporarily and recovering. No queue fault was observed in
+this capture; compilation is not established as the cause of every freeze.
+
+The candidate leaves Mesa's credential policy intact and adds an explicit Vulkan
+pipeline cache for AMD processes with mixed credentials. It uses only a private
+Darwin cache directory owned by the effective UID. Directory ownership/modes,
+file ownership/modes/link count, Vulkan vendor/device/cache UUID, size bounds and
+a corruption checksum are checked before driver deserialization. Symlinks and
+hardlinked input are refused. Atomic background writes are bounded to 64 MiB;
+misses/invalid files fall back to normal compilation. Cache operations retain
+Vulkan's default internal synchronization. Serialization runs on a private queue,
+with a final process-exit flush. Different process snapshots may replace one
+another; no cross-process cache merge or guaranteed coverage is claimed.
+NVMTL_PIPELINE_CACHE=0 disables this cache. Setting it to 1 opts normal-credential
+AMD test processes into the same path. Normal-credential defaults and NVIDIA
+retain their existing cache behavior. Kernel, power, clock and display code are
+unchanged. Vulkan API references:
+https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateGraphicsPipelines.html
+https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPipelineCacheData.html
+
+The source plugin compiles for Sequoia. The full make test suite passes; the
+private cache regression also passes AddressSanitizer/UndefinedBehaviorSanitizer.
+It checks roundtrips, driver identity, directory/file permissions, symlinks,
+hardlinks, corruption, truncation and oversize rejection. On the real HP, six
+isolated candidate runs passed render twice, texture, fetch, IOSurface and
+lifetime readbacks with Mesa disk caching explicitly disabled for those processes.
+The explicit cache saved 1776 bytes, reloaded them in the next process and grew
+to 3720 bytes. Repeated RADV pipeline creation fell from 4.002 ms to 0.122 ms;
+whole pipeline preparation remained 66.98/63.83 ms. These small authored shaders
+are not a WindowServer performance benchmark and first-use translation is not
+fixed by this cache.
+
+Candidate plugin SHA-256:
+51ca6330c4110cd0078e95bd39ec4bb8a18f97d7f2204db430f6b7935ec6ee7d.
+The installed plugin remains the beta binary. A pinned, root-owned private test
+with WindowServer's measured mixed credentials has been staged as hp50-test-cache.py
+and awaits local sudo. It changes no installed driver, service, boot argument,
+user account, display state or GPU initialization. No reboot is needed. Actual
+WindowServer deployment and improvement remain unverified. Brightness and GPU
+power/thermal management stay deferred.
+
+### Cache50 mixed-credential validation and staged installation
+
+The private candidate passed five actual HP tests with effective UID/GID 88 and
+real UID/GID 0: render twice, framebuffer fetch, IOSurface sharing and lifetime.
+The cache saved 1776 bytes and loaded them in the next process. The repeated ICD
+pipeline call took 0.139 ms versus 2.400 ms cold; whole preparation took
+55.425/82.996 ms. It later saved/reloaded 3720 bytes. The installed beta driver
+was unchanged. Evidence: sequoia-cache50-mixed.json. Re-signing the complete bundle
+changes the executable's signature bytes: the actual tested signed executable
+and the locally assembled candidate both hash to
+e77818d5d29dc3cd985ed9e2b798bc5eb3d1346568aaeec6033c1a38dec18dcb.
+The raw compiler output used as test input remains 51ca6330...ec6ee7d.
+
+The plugin was rebuilt incrementally; every other native artifact hash and every
+unaffected source input matched the prior build receipt. The updated stack passed
+real authored Metal/AIR translation, independent SPIR-V validation and 8/12-CU
+RADV/ACO/OOM mock checks, with zero hardware submissions in those offline tests.
+
+install_hp_cached_plugin.py stages only this pinned executable and an immutable
+next-boot package after confirming matching current-boot mixed-credential tests,
+unchanged remaining native components, unchanged shader bytes, live desktop and
+existing signing prerequisites. It backs up/restores the executable and daemon,
+preserves concurrent edits, verifies the installed signature, and performs fresh
+GUI-session Metal readbacks on existing healthy queues. It issues no GPU abort,
+reinitialization, kext/EFI update or signing-policy change. It then invokes the
+standard guarded one-shot display arming helper. Four temporary-file transaction
+tests pass, including rollback, concurrent edits and unrelated-native rejection.
+The full test suite passes. Actual new-plugin WindowServer behavior remains
+pending its explicit next-boot experiment; first-use specialization delays and
+other reported display defects are not claimed fixed.
+
+The cache50 display candidate ZIP is staged on the HP under
+/Users/Shared/nullarc-760m-sequoia-test/nullarc-760m-0.2.1-sequoia-cache50-test.zip.
+SHA-256: 2f99b67d6ef820ebd0c4b11d1e357ba36b7580be01cd38e3eced435c9ab39d8e.
+Its 91 files, executable modes and bundle signature passed HP checks. The installed
+bundle fully matches the existing immutable beta package. Source commit 4100e24
+is included in this private test ZIP. No new public release has been published.
+The local-sudo hp50-install-cache.sh wrapper is staged; reboot is requested only
+if it prints READY FOR GUARDED CACHE DISPLAY TEST. Installation and the actual
+WindowServer retest are pending the user's next action.
+
+### 2026-11-14 persistent WindowServer audit and source repair
+
+Priority is persistence only; brightness, generic support, caches and power work
+are deferred. The entire README and relevant boot/display/installer/recovery code
+were inspected. Installed startup scripts contain a persistence implementation
+absent from this checkout. Their read-only copies were reconciled into source,
+preserving actual consent, request consumption and successful rearming behavior.
+Captured script hashes and sanitized hardware observations are recorded in
+sequoia-persistence-audit.json; raw protected reports stay outside Git.
+
+Three prior hardware boots completed native/GUI Metal/presentation gates and
+reported desktop_persistent_rearmed=true with zero failed display transactions.
+The latest attempted display boot, 14F4EA29-B28A-4847-9BFD-5E249EB2D375, ended
+awaiting-console-session with native checks passed and no GUI Metal completion.
+No terminal failure/error was saved. Its pending marker remains; disabled exists;
+persistent/request records and phxfb-boot are absent. Current boot 7141F5AC is
+profile-diagnostic-only, with no PhxAMDFB/NMXAccel or display counter sysctls.
+The interruption cause cannot be established from the available report. Older
+reports contain genuine package-hash/firmware-entry failures; these protections
+must remain. launchctl currently has no registered job for the configured label;
+the RunAtLoad/LaunchOnlyOnce plist remains present. This alone does not establish
+why the prior process stopped. The current firmware boot is an intentional
+safety lockout following incomplete validation, not a verified rearm omission.
+
+Source corrections: diagnostic blocked-state/prior-stage reporting; a supervisor
+lock; baseline presentation counters before hold release (idle success accepted);
+one bounded console-transition revalidation without native initialization retry;
+rearm gates on complete current-boot evidence; scheduling errors no longer mark a
+healthy GPU/display as failed; NVRAM removal is verified before deleting request
+or consent evidence; explicit installer renewal accepts a valid existing schedule.
+Panic-file baselines block known new panic evidence before native initialization
+and before rearming, alongside the unchanged kext consumption/pending protection.
+No claim is made that absent/delayed panic reports detect every late kernel fault.
+
+Changed implementation: hp_boot.py, hp_windowserver.py and
+install_hp_windowserver.py. The existing framebuffer's early match, exact HP
+plan, held release and forced NVRAM consumption were reviewed and left unchanged.
+No native code/binary, firmware, GPU register, kext, EFI, AMFI or installed system
+file was modified. No kernel rebuild or native reinstall is required.
+
+Validation: full make test passed, including 11 new persistence regressions and
+updated boot tests. Python 3.9 also passed the persistence regressions. Covered:
+three simulated consecutive successful boots; idle-but-presented success; login
+transition; interrupted initialization; real native failure; panic evidence;
+accelerator mismatch; scheduling failure without current-display fallback;
+failed NVRAM cleanup retaining evidence; duplicate supervisors; explicit reviewed
+recovery. These are command/state fixtures, not new hardware acceleration proof.
+
+Physical validation remains: authorized, backed-up scripts-only recovery of this
+idle diagnostic boot, an app-only cold validation boot, then explicit persistent
+authorization and two consecutive accelerated boots. Native component hashes
+must remain identical. Do not clear the existing failure evidence automatically.
+
+
+Scripts-only recovery was explicitly authorized. The pinned patch ZIP and the
+reviewed-state recovery helper are staged in the HP user's home as
+persistence-repair-010610d.zip and apply-recovery.py. The helper verifies a fresh
+idle diagnostic boot, the exact interrupted report, marker/panic history and
+original script hashes; clones the current installed package; uses the tested
+stage_service transaction; backs up/moves pending and disabled; and verifies
+installed native trees are byte-identical. It never starts the service/GPU,
+changes NVRAM/EFI/security or reboots. SSH has no noninteractive sudo, so local
+sudo execution was requested. Check ~/nullarc-persistence-recovery-result.json
+and the launch-daemon package path before claiming application. Reboot only on
+READY FOR APP-ONLY RECOVERY REBOOT; collect fresh app-mode evidence before display
+authorization. The original immutable package and protected failure evidence stay
+in backups. No native component rebuild/replacement is authorized or required.
+
+
+The scripts-only recovery is active in package-startup-yf2ix6ho. Its manifest
+records startup patch 010610d and both installed boot/display scripts match the
+approved source. Cold boot 5BA4BD11-1D2B-4FE8-860C-DC5A7B9EDF91 passed native
+compute/render, GUI Metal compute/render and app activation on the firmware
+framebuffer, with startup_stage=complete and no reported error. PhxBringup is
+native-queues-ready; NMXAccel is present and PhxAMDFB absent as planned.
+All 11 native groups match the original immutable package; installed plugin,
+RADV and translator hashes also match. Read-only signing/ABI/display-plan and
+injected early-framebuffer metadata checks passed without EFI writes.
+Evidence: sequoia-persistence-recovery-apps.json. The recovery helper's user-home
+receipt was not found over SSH; installation/validation is independently proven
+by the daemon path, source hashes, manifest and fresh boot results above.
+
+The approved follow-up helper ~/arm-persistence.py and approved-patch.json are
+staged in the HP home. Local sudo was requested only for protected authorization
+records and the one-shot NVRAM flag, after checking current app validation and
+unchanged native groups. It changes no native/EFI files. Reboot only after READY
+FOR PERSISTENT DISPLAY REBOOT, log in, and collect current-boot presentation and
+successor-request evidence. The first/second accelerated boots are still pending.
+
+The authorization helper reached its final report export, then raised TypeError:
+install_diagnostics.atomic_write requires bytes, but the helper passed JSON text.
+This was an operator-helper error, not a GPU or rearming failure. The protected
+authorization receipt write and validate_schedule had already succeeded. Read-only
+SSH inspection confirms phxfb-boot=1 on the unchanged 5BA4BD11 app-verified boot.
+Do not rerun authorization; the next step is the already-armed display reboot.
+
+Both user-home operator helpers now encode exported JSON as UTF-8 bytes. The
+arming helper is versioned as tools/phxctl/hp_arm_persistence.py, with a regression
+that exercises the actual binary atomic writer and checks roundtrip data, 0600
+permissions and owner selection. That regression and Python 3.9 syntax checks
+pass. Only operator-helper home files were updated; installed startup/native
+files, authorization records and NVRAM were not rewritten during this correction.
+First and second accelerated persistence boots remain pending.
+
+
+## 2026-11-14 — Hardware profiles, discovery and ACPI backlight source
+
+- Added shared compiled board contracts and kernel/accelerator/framebuffer gates.
+  Unknown identities no longer inherit Firebat writes/capabilities. HP native39
+  and exact captured Firebat identities retained; HP persistence scripts unchanged.
+- Split memory/display constraints from validators, including additional reserved
+  intervals, scanout offset, register locations and non-HP geometry fixtures.
+- Added macOS/Linux collector and installer `--hardware-report`; Linux DRM helper
+  collection accepts manufacturers generically and autodetects render nodes.
+- Mesa patch 0014 dispatches measured capabilities by validated topology/profile;
+  unknown or inconsistent profiles fail enumeration. Translator source unchanged.
+- Implemented ACPI native backlight parameter handler, unique internal routing,
+  EDID/level checks, bounded worker transitions, readback failure latch, power-target
+  preservation and PCI/panel-bound optional NVRAM record. PWM/AUX and nonstandard
+  OEM keyboard notification backends are unimplemented.
+- Full host suite, Mesa C profile/patch roundtrip and transport tests, native kext
+  builds and 8/12-CU mocked Vulkan/ACO compilation pass. Zero GPU submissions in
+  these tests; no new runtime acceleration claim. The new collector parsed the
+  actual HP's read-only PCI snapshot; ACPI inventory shows LCD@110, not brightness
+  method verification.
+- No installed HP/system/EFI/native file was changed. The pending persistence
+  display boots, candidate HP acceleration regression, native slider/keyboard,
+  reboot brightness retention and sleep/wake remain physical hardware tests.
+  Other manufacturers remain diagnostic-only pending reviewed live evidence and
+  boot preflight integration. See HARDWARE_SUPPORT.md for exact scope and sources.
+
+Integration audit: merged current fork main `d017ecf` into this development branch
+without changing main. Preserved its fresh-file installer, release guide, startup
+IORegistry readiness wait and narrowly scoped recovery. Retained the later
+persistence safety repair. Updated legacy persistence test expectations for the
+required current-boot success report, and corrected a fresh-file rollback fault
+injection to compare canonical paths. The combined suite passes 180 Python
+cases plus 15 C/C++ suites. No live system files were changed.

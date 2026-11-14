@@ -5,7 +5,8 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -O2
 INCLUDES = -Isrc -Isrc/amd -Isrc/uapi -Isrc/winsys
 
 TEST_BIN_DIR = build/tests
-TESTS = $(TEST_BIN_DIR)/test_rdna3_discovery_uma \
+TESTS = $(TEST_BIN_DIR)/test_phx_hardware \
+        $(TEST_BIN_DIR)/test_rdna3_discovery_uma \
         $(TEST_BIN_DIR)/test_rdna3_ip_dcn \
         $(TEST_BIN_DIR)/test_rdna3_ucode \
         $(TEST_BIN_DIR)/test_r3n_abi \
@@ -16,7 +17,9 @@ TESTS = $(TEST_BIN_DIR)/test_rdna3_discovery_uma \
         $(TEST_BIN_DIR)/test_phx_vbios \
         $(TEST_BIN_DIR)/test_phx_vram_arena \
         $(TEST_BIN_DIR)/test_phx_hp_display \
-        $(TEST_BIN_DIR)/test_nvmtl_memory_policy
+        $(TEST_BIN_DIR)/test_nvmtl_memory_policy \
+        $(TEST_BIN_DIR)/test_nvmtl_timing \
+        $(TEST_BIN_DIR)/test_nvmtl_pipeline_cache
 
 .PHONY: all test clean kext fixtures
 
@@ -24,6 +27,9 @@ all: test
 
 $(TEST_BIN_DIR):
 	mkdir -p $(TEST_BIN_DIR)
+
+$(TEST_BIN_DIR)/test_phx_hardware: tests/test_phx_hardware.cpp $(wildcard src/amd/phx_*.h) src/amd/phx_hardware_registry.inc | $(TEST_BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
 $(TEST_BIN_DIR)/test_rdna3_discovery_uma: src/amd/rdna3_ip_discovery.cpp src/amd/rdna3_rebar_uma.cpp tests/test_rdna3_discovery_uma.cpp | $(TEST_BIN_DIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $^ -o $@
@@ -52,7 +58,7 @@ $(TEST_BIN_DIR)/test_phx_vbios: tests/test_phx_vbios.cpp src/amd/phx_vbios.h | $
 $(TEST_BIN_DIR)/test_phx_vram_arena: tests/test_phx_vram_arena.cpp src/amd/phx_vram_arena.h src/amd/phx_hp_memory.h src/amd/phx_bootstrap_layout.h tools/phxctl/mes_ring.h | $(TEST_BIN_DIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
-$(TEST_BIN_DIR)/test_phx_hp_display: tests/test_phx_hp_display.cpp src/amd/phx_hp_display.h src/amd/phx_hp_memory.h | $(TEST_BIN_DIR)
+$(TEST_BIN_DIR)/test_phx_hp_display: tests/test_phx_hp_display.cpp src/amd/phx_hp_display.h src/amd/phx_hp_memory.h src/amd/phx_memory_profile.h | $(TEST_BIN_DIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
 $(TEST_BIN_DIR)/test_phx_firmware_file: tests/test_phx_firmware_file.cpp tools/phxctl/fw_file.h | $(TEST_BIN_DIR)
@@ -61,11 +67,20 @@ $(TEST_BIN_DIR)/test_phx_firmware_file: tests/test_phx_firmware_file.cpp tools/p
 $(TEST_BIN_DIR)/test_nvmtl_memory_policy: tests/test_nvmtl_memory_policy.cpp src/nmplugin/nvmtl_memory_policy.h src/nmplugin/nvmtl_texture_layout.h | $(TEST_BIN_DIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
+$(TEST_BIN_DIR)/test_nvmtl_timing: tests/test_nvmtl_timing.cpp src/nmplugin/nvmtl_timing.h | $(TEST_BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
+
+$(TEST_BIN_DIR)/test_nvmtl_pipeline_cache: tests/test_nvmtl_pipeline_cache.cpp src/nmplugin/nvmtl_pipeline_cache_io.h | $(TEST_BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
+
 build/tools/phxfw: tools/phxctl/phxfw.cpp src/amd/rdna3_ucode_extract.cpp src/amd/rdna3_ucode_extract.h src/amd/rdna3_ucode_psp.h
 	mkdir -p build/tools
 	$(CXX) $(CXXFLAGS) $(INCLUDES) tools/phxctl/phxfw.cpp src/amd/rdna3_ucode_extract.cpp -o $@
 
 test: $(TESTS) build/tools/phxfw
+	python3 tools/phx_hardware_registry.py
+	python3 tests/test_hardware_discovery.py
+	python3 tests/test_mesa_profile_registry.py
 	python3 tools/phx_profile.py --check
 	python3 tools/phx_device_profile.py
 	python3 tests/test_phx_profile.py
@@ -82,6 +97,8 @@ test: $(TESTS) build/tools/phxfw
 	python3 tests/test_component_install.py
 	python3 tests/test_prepare_experiment.py
 	python3 tests/test_hp_boot.py
+	python3 tests/test_hp_persistence.py
+	python3 tests/test_hp_arm_receipt.py
 	python3 tests/test_hp_metal_publication.py
 	python3 tests/test_hp_boot_recovery.py
 	python3 tests/test_hp_display_capture.py
@@ -89,6 +106,7 @@ test: $(TESTS) build/tools/phxfw
 	python3 tests/test_scanout_copy.py
 	python3 tests/test_hp_amfi.py
 	python3 tests/test_hp_display_install.py
+	python3 tests/test_hp_cached_plugin_install.py
 	python3 tests/test_hp_aux_update.py
 	python3 tests/test_hp_acpi_dependency.py
 	python3 tests/test_early_fb.py

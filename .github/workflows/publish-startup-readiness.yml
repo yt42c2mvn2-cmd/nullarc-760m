@@ -1,16 +1,6 @@
 name: Publish current HP 760M Sequoia beta and retire superseded ZIP assets
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/publish-startup-readiness.yml'
-      - 'tools/phxctl/hp_bringup.py'
-      - 'install/recover_hp_boot.py'
-      - 'tools/release/publish_startup_readiness.py'
-      - 'README.md'
-      - 'tests/test_hp_metal_publication.py'
-      - 'tests/test_hp_boot_recovery.py'
   workflow_dispatch:
 
 permissions:
@@ -104,15 +94,15 @@ jobs:
             --title "NullArc-760M 0.2.0 — HP Sequoia verified beta" \
             --notes-file dist/current/RELEASE_NOTES-startup-readiness.md
 
-      - name: Delete previous ZIP release assets, retain current ZIP and non-ZIP source assets
+      - name: Retire superseded ZIP assets of this beta tag only
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           current=nullarc-760m-0.2.0-sequoia-beta-startup-readiness.zip
           # Only uploaded assets are removed; GitHub's automatic source ZIPs cannot be deleted.
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq '.[] | .assets[]? | select(.name | endswith(".zip")) | [.id, .name] | @tsv' \
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/v0.2.0-sequoia-beta" \
+            --jq '.assets[]? | select(.name | endswith(".zip")) | [.id, .name] | @tsv' \
             > dist/old-zip-assets.tsv
           while IFS=$'\t' read -r id name; do
             [[ -n "$id" ]] || continue

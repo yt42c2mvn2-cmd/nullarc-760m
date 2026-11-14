@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "profiles": [
+    {
+      "name": "hp-760m",
+      "pci": {
+        "vendor": 4098,
+        "device": 6400,
+        "revision": 202,
+        "subvendor": 4156,
+        "subdevice": 35946
+      },
+      "backend": "captured-native",
+      "topology": "hp-760m",
+      "evidence": [
+        "hardware/profiles/hp-760m.json",
+        "hardware/dumps/hp_envy_760m/sequoia-build39-native-execution.json"
+      ],
+      "verification": "native-metal-windowserver",
+      "backlight": "unknown",
+      "contract": "hp-native39",
+      "model": "AMD Radeon 760M"
+    },
+    {
+      "name": "firebat-780m-reference",
+      "pci": {
+        "vendor": 4098,
+        "device": 6400,
+        "revision": 186,
+        "subvendor": 32769,
+        "subdevice": 8212
+      },
+      "backend": "reference-native",
+      "topology": null,
+      "evidence": [
+        "hardware/dumps/firebat_u6c/pci_resources.json"
+      ],
+      "verification": "upstream-reference",
+      "backlight": "unknown",
+      "model": "AMD Radeon 780M"
+    }
+  ]
+}

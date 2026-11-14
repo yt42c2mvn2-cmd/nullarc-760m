@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """HP app acceleration, with authorized display boots and guarded persistence."""
 import argparse
+import fcntl
 from datetime import datetime,timezone
 import json
 import os
@@ -55,7 +56,10 @@ def user_prefix(user,work):
             '/usr/bin/env','XDG_CACHE_HOME='+str(work/'cache'),'NVMTL_AIRCACHE='+str(work/'aircache'),
             'NVMTL_LOG_PATH='+str(work/'plugin.log'),'PHX_RADV_DRIVER=/Library/GPUBundles/nvmtl/libvulkan_radeon.dylib']
 
+class ConsoleSessionChanged(ValueError):pass
+
 def verify_console_metal(package,report,save):
+    report['metal_verified']=False
     report['verification_phase']='awaiting-console-session';save()
     user=console_user(check=lambda:desktop.check_crashes(report,save)) if report.get('desktop_armed') else console_user()
     work=Path(tempfile.mkdtemp(prefix='nullarc-user-metal-',dir='/Users/Shared'))
@@ -88,27 +92,47 @@ def verify_console_metal(package,report,save):
         raise
     report['metal_readbacks_verified']=True
     report['console_uid_after_validation']=os.stat('/dev/console').st_uid;save()
-    if report['console_uid_after_validation']!=user.pw_uid:raise ValueError('console user changed during validation; app access remains restricted')
+    if report['console_uid_after_validation']!=user.pw_uid:raise ConsoleSessionChanged('console user changed during validation; app access remains restricted')
     report['metal_verified']=True;report['verification_phase']='complete';save()
 
 def boot(package,state,allow,status=None):
     state.mkdir(parents=True,exist_ok=True,mode=0o700)
+    with (state/'boot.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:return 0  # Existing supervisor owns status and the GPU.
+        return _boot(package,state,allow,status)
+
+def _boot(package,state,allow,status=None):
+    state.mkdir(parents=True,exist_ok=True,mode=0o700)
     allow.parent.mkdir(parents=True,exist_ok=True)
     atomic(allow,RESTRICTED)
-    if status:
-        atomic(status,json.dumps({'automatic_initialization_attempted':False,'apps_enabled':False,
-            'desktop_armed':False,'boot_session_uuid':desktop.boot_uuid(),'recorded_at':datetime.now(timezone.utc).isoformat()})+'\n')
-    if (state/'disabled').exists():
-        if (state/desktop.PERSISTENT).exists() or (state/desktop.PERSISTENT).is_symlink():
-            desktop.cancel_persistence(state)
-        return 0
+    report={'automatic_initialization_attempted':False,'apps_enabled':False,'desktop_armed':False,
+            'boot_session_uuid':desktop.boot_uuid()}
+    publish(status,report)
     pending=state/'pending'
-    if pending.exists():
+    if (state/'disabled').exists() or pending.exists():
+        reason='service-disabled' if (state/'disabled').exists() else 'previous-boot-incomplete'
+        report.update(startup_blocked_by=reason,failed_stage=reason,
+                      error='previous initialization did not finish; disabled until local review' if pending.exists() else 'service disabled; local review required')
+        previous=sorted(state.glob('boot-*/boot-result.json'),key=lambda p:p.stat().st_mtime,reverse=True)
+        if previous:
+            try:
+                old=json.loads(previous[0].read_text())
+                report['previous_boot']={k:old.get(k) for k in ('boot_session_uuid','native_initialization_verified',
+                    'metal_verified','desktop_present_verified','verification_phase','failed_stage','error')}
+                report['previous_boot_report']=str(previous[0])
+            except (OSError,ValueError) as e:report['previous_report_error']=str(e)
         (state/'disabled').touch()
-        if (state/desktop.PERSISTENT).exists() or (state/desktop.PERSISTENT).is_symlink():
-            desktop.cancel_persistence(state)
-        raise ValueError('previous initialization did not finish; disabled until local review')
-    fd=os.open(pending,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);os.close(fd)
+        try:
+            if any((state/n).exists() or (state/n).is_symlink() for n in (desktop.PERSISTENT,desktop.REQUEST)):
+                desktop.cancel_persistence(state)
+        except (OSError,ValueError,subprocess.SubprocessError) as e:report['desktop_persistence_cancel_error']=str(e)
+        publish(status,report)
+        if reason=='previous-boot-incomplete':raise ValueError(report['error'])
+        return 0
+    fd=os.open(pending,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,'w') as f:
+        json.dump({'boot_session_uuid':report['boot_session_uuid']},f);f.flush();os.fsync(f.fileno())
     folder=Path(tempfile.mkdtemp(prefix='boot-',dir=state))
     command=[sys.executable,'-B',str(package/'gpu/phxctl/hp_bringup.py'),
              '--package',str(package),'--output',str(folder/'execution'),'--execute','--claim','--defer-metal']
@@ -119,7 +143,9 @@ def boot(package,state,allow,status=None):
         publish(status,report)
     def frame_progress(phase):report.update(desktop_phase=phase);save()
     try:
+        report['startup_stage']='framebuffer-readiness';save()
         display=desktop.begin(package,state,folder,progress=frame_progress)
+        report['startup_stage']='native-initialization';save()
         p=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
         try:stdout,stderr=p.communicate(timeout=300)
         except subprocess.TimeoutExpired:
@@ -140,22 +166,41 @@ def boot(package,state,allow,status=None):
             raise ValueError('bootstrap did not prove native compute, render and accelerator claim')
         report['native_initialization_verified']=True;save()
         if display:
+            report['startup_stage']='display-registration';save()
             desktop.arm(report,save,allow,atomic)
-        verify_console_metal(package,report,save)
+        report['startup_stage']='console-metal-validation';save()
+        for attempt in range(2):
+            try:
+                verify_console_metal(package,report,save);break
+            except ConsoleSessionChanged:
+                report['console_session_retries']=attempt+1;save()
+                if attempt:raise
         if report.get('metal_verified') is not True:raise ValueError('console-user Metal verification missing')
         if (state/'disabled').exists():raise ValueError('service disabled during initialization; app access remains restricted')
-        if display:desktop.verify_present(report,save)
-        atomic(allow,desktop.DESKTOP if display else APPS)
-        pending.unlink()
-        report['apps_enabled']=True
         if display:
-            # Only a proven desktop with successful console-user Metal tests may
-            # rearm the one-shot NVRAM flag for another reboot.
-            report['desktop_persistent_rearmed']=desktop.rearm_if_permanent(package,state)
+            report['startup_stage']='display-presentation';save()
+            desktop.verify_present(report,save)
+        atomic(allow,desktop.DESKTOP if display else APPS)
+        report['apps_enabled']=True
+        report['desktop_phase']='verified' if display else 'app-only-verified'
+        save()
+        if display:
+            report['startup_stage']='next-boot-scheduling';save()
+            try:report['desktop_persistent_rearmed']=desktop.rearm_if_permanent(package,state,report)
+            except (OSError,ValueError,subprocess.SubprocessError) as schedule_error:
+                # Scheduling failure is not evidence that the running GPU failed.
+                report.update(desktop_persistent_rearmed=False,desktop_rearm_error=str(schedule_error))
+                try:desktop.clear_next_boot(state)
+                except (OSError,ValueError,subprocess.SubprocessError) as cleanup:
+                    report['desktop_persistence_cancel_error']=str(cleanup)
+                    (state/'disabled').touch()  # Block the successor, retain the healthy current desktop.
+        report['startup_stage']='complete';save()
+        pending.unlink()
     except (OSError,ValueError,subprocess.SubprocessError) as e:
+        report.setdefault('failed_stage',report.get('startup_stage','startup'))
         report['error']=str(e);report['apps_enabled']=False;(state/'disabled').touch();atomic(allow,RESTRICTED)
         recovery_safe=True
-        if (state/desktop.PERSISTENT).exists() or (state/desktop.PERSISTENT).is_symlink():
+        if any((state/n).exists() or (state/n).is_symlink() for n in (desktop.PERSISTENT,desktop.REQUEST)):
             try:desktop.cancel_persistence(state)
             except (OSError,ValueError,subprocess.SubprocessError) as cleanup:
                 recovery_safe=False
