@@ -1390,3 +1390,34 @@ and awaits local sudo. It changes no installed driver, service, boot argument,
 user account, display state or GPU initialization. No reboot is needed. Actual
 WindowServer deployment and improvement remain unverified. Brightness and GPU
 power/thermal management stay deferred.
+
+### Cache50 mixed-credential validation and staged installation
+
+The private candidate passed five actual HP tests with effective UID/GID 88 and
+real UID/GID 0: render twice, framebuffer fetch, IOSurface sharing and lifetime.
+The cache saved 1776 bytes and loaded them in the next process. The repeated ICD
+pipeline call took 0.139 ms versus 2.400 ms cold; whole preparation took
+55.425/82.996 ms. It later saved/reloaded 3720 bytes. The installed beta driver
+was unchanged. Evidence: sequoia-cache50-mixed.json. Re-signing the complete bundle
+changes the executable's signature bytes: the actual tested signed executable
+and the locally assembled candidate both hash to
+e77818d5d29dc3cd985ed9e2b798bc5eb3d1346568aaeec6033c1a38dec18dcb.
+The raw compiler output used as test input remains 51ca6330...ec6ee7d.
+
+The plugin was rebuilt incrementally; every other native artifact hash and every
+unaffected source input matched the prior build receipt. The updated stack passed
+real authored Metal/AIR translation, independent SPIR-V validation and 8/12-CU
+RADV/ACO/OOM mock checks, with zero hardware submissions in those offline tests.
+
+install_hp_cached_plugin.py stages only this pinned executable and an immutable
+next-boot package after confirming matching current-boot mixed-credential tests,
+unchanged remaining native components, unchanged shader bytes, live desktop and
+existing signing prerequisites. It backs up/restores the executable and daemon,
+preserves concurrent edits, verifies the installed signature, and performs fresh
+GUI-session Metal readbacks on existing healthy queues. It issues no GPU abort,
+reinitialization, kext/EFI update or signing-policy change. It then invokes the
+standard guarded one-shot display arming helper. Four temporary-file transaction
+tests pass, including rollback, concurrent edits and unrelated-native rejection.
+The full test suite passes. Actual new-plugin WindowServer behavior remains
+pending its explicit next-boot experiment; first-use specialization delays and
+other reported display defects are not claimed fixed.

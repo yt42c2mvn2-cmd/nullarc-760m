@@ -97,6 +97,7 @@ test: $(TESTS) build/tools/phxfw
 	python3 tests/test_scanout_copy.py
 	python3 tests/test_hp_amfi.py
 	python3 tests/test_hp_display_install.py
+	python3 tests/test_hp_cached_plugin_install.py
 	python3 tests/test_hp_aux_update.py
 	python3 tests/test_hp_acpi_dependency.py
 	python3 tests/test_early_fb.py

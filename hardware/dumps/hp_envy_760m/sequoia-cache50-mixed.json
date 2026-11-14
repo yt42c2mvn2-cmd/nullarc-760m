@@ -1,0 +1,60 @@
+{
+  "boot_session_uuid": "55D5B89D-8B3A-4847-99D3-C2E1D9D80AE8",
+  "installed_driver_changed": false,
+  "candidate_sha256": "51ca6330c4110cd0078e95bd39ec4bb8a18f97d7f2204db430f6b7935ec6ee7d",
+  "stages": [
+    {
+      "mode": "render",
+      "seconds": 2.525800264,
+      "returncode": 0,
+      "readback": "pixels: red 32640 blue 32896 other 0 (expect ~32896 red, ~32640 blue); corners: TL 0xff0000ff BL 0xffff0000 BR 0xff0000ff"
+    },
+    {
+      "mode": "render",
+      "seconds": 0.8322441779999994,
+      "returncode": 0,
+      "readback": "pixels: red 32640 blue 32896 other 0 (expect ~32896 red, ~32640 blue); corners: TL 0xff0000ff BL 0xffff0000 BR 0xff0000ff"
+    },
+    {
+      "mode": "fetch",
+      "seconds": 1.1283350050000003,
+      "returncode": 0,
+      "readback": "fetch missing attachment: 4096/4096 correct, first 0xff802040"
+    },
+    {
+      "mode": "surface",
+      "seconds": 0.807377163,
+      "returncode": 0,
+      "readback": "IOSurface CPU-to-GPU 1920x1200: all pixels match"
+    },
+    {
+      "mode": "lifetime",
+      "seconds": 0.848421042,
+      "returncode": 0,
+      "readback": "PASS: 128 asynchronous fill/copy submissions survived source-wrapper release; every byte matched"
+    }
+  ],
+  "cache_log": [
+    "pid 1877 NVMTL: pipeline-cache: loaded 0 bytes; private effective UID 88, real UID 0",
+    "pid 1877 NVMTL: pipeline-time: graphics-icd 2.400 ms start_us 1979747341 end_us 1979749741 result 0",
+    "pid 1877 NVMTL: pipeline-time: graphics-total 82.996 ms start_us 1979667004 end_us 1979750000 result 0",
+    "pid 1877 NVMTL: pipeline-cache: saved 1776 bytes generation 1",
+    "pid 1882 NVMTL: pipeline-cache: loaded 1776 bytes; private effective UID 88, real UID 0",
+    "pid 1882 NVMTL: pipeline-time: graphics-icd 0.139 ms start_us 1980600980 end_us 1980601118 result 0",
+    "pid 1882 NVMTL: pipeline-time: graphics-total 55.425 ms start_us 1980545898 end_us 1980601322 result 0",
+    "pid 1882 NVMTL: pipeline-cache: saved 1776 bytes generation 1",
+    "pid 1884 NVMTL: pipeline-cache: loaded 1776 bytes; private effective UID 88, real UID 0",
+    "pid 1884 NVMTL: pipeline-time: graphics-icd 3.978 ms start_us 1981716496 end_us 1981720474 result 0",
+    "pid 1884 NVMTL: pipeline-time: graphics-total 60.819 ms start_us 1981660003 end_us 1981720823 result 0",
+    "pid 1884 NVMTL: pipeline-time: graphics-icd 2.183 ms start_us 1981740682 end_us 1981742865 result 0",
+    "pid 1884 NVMTL: pipeline-time: graphics-total 3.113 ms start_us 1981740032 end_us 1981743145 result 0",
+    "pid 1884 NVMTL: pipeline-cache: saved 3720 bytes generation 2",
+    "pid 1887 NVMTL: pipeline-cache: loaded 3720 bytes; private effective UID 88, real UID 0",
+    "pid 1889 NVMTL: pipeline-cache: loaded 3720 bytes; private effective UID 88, real UID 0"
+  ],
+  "mixed_credentials_logged": true,
+  "passed": true,
+  "installed_driver_unchanged": true,
+  "installed_candidate_sha256": "e77818d5d29dc3cd985ed9e2b798bc5eb3d1346568aaeec6033c1a38dec18dcb",
+  "scope": "Private candidate offscreen probe with real UID/GID 0 and effective UID/GID 88; installed desktop unchanged"
+}

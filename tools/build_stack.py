@@ -167,7 +167,7 @@ def assemble(a):
         for name in ('760M_STATUS.md', '760M_ARCHITECTURE.md', 'BUILD_STACK.md', 'LINUX_VALIDATION.md',
                      'INSTALL.md','INSTALL_REFERENCE.md'):
             copy(REPO / 'docs' / name, p / 'docs' / name)
-        for name in ('install_diagnostics.py','install_components.py','prepare_experiment.py','install_hp_boot.py','recover_hp_boot.py','install_hp_windowserver.py','update_hp_aux.py','fix_hp_acpi_dependency.py','install_early_fb.py','configure_hp_amfi.py'):
+        for name in ('install_diagnostics.py','install_components.py','prepare_experiment.py','install_hp_boot.py','recover_hp_boot.py','install_hp_windowserver.py','install_hp_cached_plugin.py','update_hp_aux.py','fix_hp_acpi_dependency.py','install_early_fb.py','configure_hp_amfi.py'):
             copy(REPO / 'install' / name, p / name)
         for name in ('install.sh','uninstall.sh'):
             copy(REPO / 'install' / name, p / name)
@@ -190,7 +190,7 @@ def assemble(a):
                     'translator_commit':(translator / 'SOURCE_COMMIT').read_text().strip(),
                     'minimum_macos':a.min_macos, 'native_targets':native_targets,
                     'experimental_hp_bootstrap':True,'bootstrap_requires_local_admin':True,
-                    'validation':'Measured HP Sequoia native/Metal/apps and accelerated desktop verified; PCI-aperture copy sampled at 60 presents/s; Safari latency, video and tearing unresolved'}
+                    'validation':'Historical HP Sequoia native/Metal/apps and desktop evidence is documented; this assembled package needs its own display validation; latency, video and tearing unresolved'}
         write(p, metadata); verify(p)
         p.rename(dest)
     print(f'Assembled {dest}; HP diagnostic boot, explicit experimental bootstrap')
