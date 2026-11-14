@@ -1,46 +1,36 @@
-# NullArc Installer — minimal native AppKit frontend
+# NullArc Installer v0.3.2 — precompiled Sequoia HP edition
 
-This is a small **x86_64 macOS AppKit utility** written in Swift. It is not an Electron app, does not embed a web server, and has no resident privileged daemon, login item, driver, Python environment or other dependencies of its own.
+The official v0.3.2 AppKit .app ships with the checksum-pinned, previously compiled 0.2.0 HP Sequoia release. Users do not need a source checkout, Homebrew, an Apple SDK, Mesa development dependencies or a compiler to use the installer.
 
-## Build the app (macOS + Xcode command line tools)
+**Scope:** HP Envy x360 16-ad0013dx, Radeon 760M, macOS Sequoia 15.8.2. This is an experimental driver, not a general hardware installer. Other laptops, Tahoe, and the newer hardware-profile and ACPI brightness source changes are not included or validated in this compiled driver.
 
-From the repository checkout:
+## Download and launch
+
+1. Download the `nullarc-760m-appkit-precompiled-v0.3.2-alpha.zip` asset from the `v0.3.2-appkit-precompiled-alpha` GitHub release. Verify `SHA256SUMS-appkit-precompiled` before opening it.
+2. Extract the archive and open `NullArcInstaller.app`. The bundled app is ad-hoc-signed, not Apple-notarized. Review the app source and use macOS's normal local-app approval if Gatekeeper prompts you.
+3. Click **Prepare Package**. The app checks the embedded 0.2.0 ZIP against its SHA-256 and extracts into a newly created Application Support folder to avoid extra files corrupting the strict package inventory. The extracted `package-manifest.json` is verified using the packaged `package_manifest.py`. The existing installation scripts require Python 3.
+4. On an idle, diagnostic-only firmware-framebuffer HP boot, click **Install Files**. The app runs `./install.sh --fresh-files --check`, asks for confirmation and macOS administrator authorization, then stages the precompiled driver files using `./install.sh --fresh-files`. The existing checks and backups remain mandatory.
+5. **Installation is staged**: native kernel collection loading, native compute/render, GUI Metal verification and app-startup validation are *not* automatically performed by Install Files. After completing the documented validation stages, click **Enable App Startup**; its guarded `--hp-native` installer may require another boot.
+6. Once an app-mode boot passes its live Metal validation, click **Enable Desktop**. It first runs `--windowserver --check`, then requests explicit authorization to arm guarded accelerated WindowServer. It may stage another app-only reboot first. Hardware failures cancel persistence.
+
+## Safety and provenance
+
+- The bundled ZIP is the previously published `nullarc-760m-0.2.0-sequoia-beta-startup-readiness.zip`, not a new compilation of the November 14 hardware discovery, ACPI brightness, or WindowServer persistence source.
+- No source fetching or dependency installation is required for the compiled app. The app itself does not change EFI, remove failed-boot markers, bypass AMFI/SIP, or issue GPU register writes. Administrator authorization is requested separately for each allowed install stage.
+- Do not run fresh-file staging on an already accelerated desktop. Keep a backup EFI, a firmware framebuffer recovery path and the component backups. No one-click fresh-install GPU activation is promised.
+- If package integrity, live driver compatibility, display safety or current-boot validation fails, the existing installer refuses the operation. Do not bypass the refusal.
+
+## Maintainer build
+
+The macOS 15 release workflow fetches the pinned original 0.2.0 compiled ZIP and SHA256SUMS from the existing release. It verifies SHA-256, embeds both files unchanged in the native AppKit .app, compiles just the small Swift frontend with `xcrun swiftc`, ad-hoc signs the complete bundle, checks its embedded resources, creates a ZIP and verifies it after publication. It does **not** build, replace or claim newer GPU binaries.
+
+Locally, from a repository checkout on a macOS machine with Xcode command-line tools:
 
 ```sh
-bash apps/NullArcInstaller/build.sh
+bash apps/NullArcInstaller/build.sh build/apps \
+  /path/to/nullarc-760m-0.2.0-sequoia-beta-startup-readiness.zip \
+  /path/to/SHA256SUMS-startup-readiness
 open build/apps/NullArcInstaller.app
 ```
 
-The build script uses `xcrun swiftc`, produces an ad-hoc-signed x86_64 .app, and does not install anything. Official alpha release ZIPs can contain this app precompiled. It is **not notarized**; macOS may require the standard right-click/Open override for locally built software.
-
-## Use the GUI with a released, compiled package
-
-1. Download the approved compiled 0.2.0 Sequoia HP ZIP and SHA256SUMS from the release page; verify the archive checksum and extract it into a clean directory. Do not substitute an unverified source-only ZIP for native binaries.
-2. Click **Choose Package** and select the directory containing `install.sh`, `package_manifest.py` and `package-manifest.json`.
-3. Click **Verify Package**. The GUI runs the package's existing SHA-256 inventory verifier, without privilege or GPU initialization.
-4. For a **fresh** HP diagnostic-only install, use **Check Files** then **Install Files**. This invokes `install.sh --fresh-files --check` before presenting a clear macOS administrator authorization prompt to run `install.sh --fresh-files`; it archives recognized old components and boot service but does not rebuild/load auxiliary kexts, activate GPU queues, arm display or override safety markers.
-5. Only after the documented manual engine, loaded-kext and Metal verification stages, use **Check App Startup** and **Enable App Startup**. Follow its required app-mode reboot and validation.
-6. Only after actual current-boot native/Metal/display checks succeed, choose **Check WindowServer** and **Arm WindowServer**. `install.sh --windowserver` remains the trusted policy gate. It may stage another reboot rather than immediately authorize a display boot. Persistence rearming remains guarded; genuine faults still cancel it.
-7. **Read Current Status** reads the last public HP boot report and current NVRAM/kext state without modifying them.
-
-Every installation operation first runs its unprivileged `--check` preflight, then requires an explicit second confirmation. A macOS administrator prompt via the system `osascript` privilege mechanism is used only for the selected install action. The app does **not** retain credentials or impersonate root. The underlying installer independently repeats package validation and guarded runtime checks.
-
-**Never use fresh file staging on an already running accelerated desktop.** An installed bundle is not proof that its kext was loaded. Keep EFI backups and a firmware-framebuffer recovery boot. Do not remove failure markers automatically.
-
-## Compile a fresh driver stack using the same UI
-
-This optional advanced mode needs a real source checkout, macOS build tools, pinned Mesa/RADV checkout, MacKernelSDK, Vulkan headers, glslang, translator source, AIR-runtime dependencies and third-party license material.
-
-1. **Choose Source**: select the repository checkout containing `tools/build_stack.py`.
-2. Copy `apps/NullArcInstaller/build-config.example.json` outside the repo and fill in **absolute paths** to your local dependencies. Set `min_macos` to `15.0` for the known Sequoia target; Tahoe 26 is not hardware-validated. Choose an unused absolute output directory.
-3. **Choose Build Config** and **Compile GPU Stack**. The app calls the existing `tools/build_stack.py` with arguments (never via a shell), runs it as the logged-in user, and selects the resulting manifest-bearing package if the build succeeds. This is not an installer or a hardware validation claim.
-4. **Verify Package**, then follow the same staged installation and runtime testing procedure above. The new hardware-profile and backlight binaries must be evaluated first on diagnostic-only hardware; do not immediately arm WindowServer just because compilation succeeds.
-
-The core `build_stack.py` build requires correctly versioned external sources and binaries; this app is not a one-click downloader and cannot manufacture a matching GPU build without them.
-
-## Supported scope and limitations
-
-- The AppKit GUI is built for Intel x86_64 macOS. Its release ZIP contains **the app only**, not recompiled GPU drivers or firmware.
-- The verified and guarded runtime path remains the exact HP Envy x360 Radeon 760M on macOS Sequoia 15. Other laptops remain discovery-only; macOS 26 remains unverified.
-- Experimental ACPI brightness and newer persistence fixes in source may require rebuilding kexts and hardware testing. The app does not silently change AMFI, EFI, NVRAM, protected failures or permissions.
-- The packaging job compiles and signs the GUI and checks the uploaded ZIP; it cannot prove GPU compatibility, brightness, or successful boot persistence on a physical laptop.
+A build without the two pinned inputs intentionally produces a GUI-only development app which refuses to prepare missing embedded drivers.

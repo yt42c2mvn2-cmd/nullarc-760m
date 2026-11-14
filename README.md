@@ -20,11 +20,13 @@ installer below until a matching rebuilt and hardware-validated package exists.
 
 See [0.3.0 preview release notes](docs/RELEASE_0.3.0_SOURCE_PREVIEW.md).
 
-## Native AppKit installer (alpha)
+## Precompiled AppKit installer — no source build required
 
-**[Download the compiled NullArc Installer .app](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases/tag/v0.3.1-appkit-installer-alpha).** This small, ad-hoc-signed x86_64 AppKit utility is a frontend to the existing checked installation workflow: select a compiled release package, verify hashes, preview files/app-mode/WindowServer steps, and explicitly authorize the guarded install via the macOS administrator prompt. It can also invoke `tools/build_stack.py` to compile a complete driver package from a **separate source checkout and user-provided SDK/Mesa/translator/dependency paths**. It never silently bypasses failure markers, replaces active native drivers or arms WindowServer without explicit consent.
+**[Download NullArc Installer v0.3.2 alpha](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases/tag/v0.3.2-appkit-precompiled-alpha)**. The native x86_64 AppKit app bundles the existing verified-checksum **0.2.0 HP Sequoia precompiled driver package**, including the accelerator, Metal plugin, RADV, translator, firmware, and installation scripts. No Homebrew, Xcode SDK, source fetching, or driver compilation is required.
 
-**The app release contains only the GUI**, not rebuilt PhxAccel/PhxBringup/NVMTLDriver/RADV; the newer source preview is not an installable driver build. Read [AppKit installer/build instructions](docs/APPKIT_INSTALLER.md). Other laptops and Tahoe are not validated.
+Open the app, click **Prepare Package** to verify/extract the embedded ZIP, then **Install Files** from an idle, diagnostic-only HP boot. App startup, loaded-kext/native/Metal verification and guarded accelerated WindowServer enabling remain separate safety-gated stages; a file install is not automatic GPU activation. The existing installer still requires Python 3. Do not replace working accelerated drivers or bypass failed-boot markers.
+
+**The newer 0.3.0 native brightness, multi-device profiles, and persistence-source revisions are not included in the precompiled 0.2.0 driver.** This release bundles existing binaries instead of mislabeling old compiled code as a new build. See [precompiled AppKit installer instructions](docs/APPKIT_INSTALLER.md).
 
 ## Download — one current Sequoia installer
 
