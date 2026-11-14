@@ -1338,3 +1338,55 @@ Evidence: sequoia-latency49.json. The read-only hp_latency_capture.py collector
 has been staged for local-sudo startup/cache, reservation and WindowServer stack
 capture. It neither installs a candidate nor initializes the GPU. That protected
 capture is still pending; the reported visual/performance bugs are not fixed.
+
+### Captured freeze paths and private explicit pipeline cache candidate
+
+The local-sudo latency49 report was collected successfully. WindowServer's actual
+credentials are effective UID/GID 88 and real UID/GID 0. Its Mesa cache directory
+contained zero files. Mesa disk_cache_enabled() refuses mixed credentials through
+__normal_user(), so choosing a writable path alone cannot enable that cache.
+The ten-second sample contains RADV graphics pipeline compilation, SPIR-V-to-NIR
+and NIR optimization stacks. Later driver logs report six new fixed fragment
+function-constant variants taking 7.27–8.04 seconds each to translate. Expensive
+first-use specialization is therefore present independently of disk caching.
+Evidence: hardware/dumps/hp_envy_760m/sequoia-latency50.json. The user also reports
+applications freezing temporarily and recovering. No queue fault was observed in
+this capture; compilation is not established as the cause of every freeze.
+
+The candidate leaves Mesa's credential policy intact and adds an explicit Vulkan
+pipeline cache for AMD processes with mixed credentials. It uses only a private
+Darwin cache directory owned by the effective UID. Directory ownership/modes,
+file ownership/modes/link count, Vulkan vendor/device/cache UUID, size bounds and
+a corruption checksum are checked before driver deserialization. Symlinks and
+hardlinked input are refused. Atomic background writes are bounded to 64 MiB;
+misses/invalid files fall back to normal compilation. Cache operations retain
+Vulkan's default internal synchronization. Serialization runs on a private queue,
+with a final process-exit flush. Different process snapshots may replace one
+another; no cross-process cache merge or guaranteed coverage is claimed.
+NVMTL_PIPELINE_CACHE=0 disables this cache. Setting it to 1 opts normal-credential
+AMD test processes into the same path. Normal-credential defaults and NVIDIA
+retain their existing cache behavior. Kernel, power, clock and display code are
+unchanged. Vulkan API references:
+https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateGraphicsPipelines.html
+https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPipelineCacheData.html
+
+The source plugin compiles for Sequoia. The full make test suite passes; the
+private cache regression also passes AddressSanitizer/UndefinedBehaviorSanitizer.
+It checks roundtrips, driver identity, directory/file permissions, symlinks,
+hardlinks, corruption, truncation and oversize rejection. On the real HP, six
+isolated candidate runs passed render twice, texture, fetch, IOSurface and
+lifetime readbacks with Mesa disk caching explicitly disabled for those processes.
+The explicit cache saved 1776 bytes, reloaded them in the next process and grew
+to 3720 bytes. Repeated RADV pipeline creation fell from 4.002 ms to 0.122 ms;
+whole pipeline preparation remained 66.98/63.83 ms. These small authored shaders
+are not a WindowServer performance benchmark and first-use translation is not
+fixed by this cache.
+
+Candidate plugin SHA-256:
+51ca6330c4110cd0078e95bd39ec4bb8a18f97d7f2204db430f6b7935ec6ee7d.
+The installed plugin remains the beta binary. A pinned, root-owned private test
+with WindowServer's measured mixed credentials has been staged as hp50-test-cache.py
+and awaits local sudo. It changes no installed driver, service, boot argument,
+user account, display state or GPU initialization. No reboot is needed. Actual
+WindowServer deployment and improvement remain unverified. Brightness and GPU
+power/thermal management stay deferred.

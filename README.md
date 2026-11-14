@@ -31,7 +31,10 @@ and an accelerated WindowServer desktop. The measured PCI-aperture copy path
 reached 60 presents/s. This is an experimental prerelease, with reported Safari
 hover stutter, video/web slowness and game tearing still under investigation.
 Hardware video decoding, brightness control, sleep/resume and external displays
-are not verified. Full device support is not yet established.
+are not verified. A captured WindowServer workload also showed 7–8 second
+first-use shader-specialization stalls and no Mesa disk cache under its mixed
+real/effective credentials. A private explicit pipeline-cache candidate is under
+offscreen validation; it is not part of the published beta. Full device support is not yet established.
 
 Download the compiled ZIP from [Releases](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases),
 verify `SHA256SUMS`, extract it and read its `INSTALL.md`. For the already verified

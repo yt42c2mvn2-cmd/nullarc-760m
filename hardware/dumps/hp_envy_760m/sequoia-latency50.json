@@ -1,0 +1,25 @@
+{
+  "scope": "Physical HP Sequoia WindowServer capture; same healthy accelerated boot",
+  "boot_session_uuid": "55D5B89D-8B3A-4847-99D3-C2E1D9D80AE8",
+  "windowserver_credentials": {
+    "effective_uid": 88,
+    "real_uid": 0,
+    "effective_gid": 88,
+    "real_gid": 0
+  },
+  "mesa_cache_empty": true,
+  "sample_seconds": 10,
+  "sample_interval_ms": 10,
+  "sample_returncode": 0,
+  "compilation_stacks_present": true,
+  "failed_transactions": 0,
+  "new_function_constant_variant_translation_ms": [
+    7315.7,
+    7624.6,
+    7455.5,
+    8040.8,
+    7749.5,
+    7270.3
+  ],
+  "limits": "Sampling contains concurrent stacks and does not provide an exact frame-by-frame causal trace. Mesa disk cache is disabled by its existing real/effective credential policy. First-use AIR specialization remains independently expensive."
+}
