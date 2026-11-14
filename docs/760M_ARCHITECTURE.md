@@ -288,7 +288,10 @@ reference-machine CVT defaults. Nominal pixel clock is labelled accordingly.
 verifies actual ABI/plan/current-boot Metal -> root-owned one-shot request/NVRAM ->
 `hp_boot.py` privileged native tests -> `hp_windowserver.py` exact pipe and AGDC
 registration -> release hold -> GUI Metal and present checks. GUI waiting cannot
-precede releasing the panel. The request is consumed, not automatically renewed.
+precede releasing the panel. The kernel consumes each request. With explicit
+persistent authorization, a fully verified boot schedules its successor. Pending
+initialization, failed readbacks, unverified presentation and new panic evidence
+block continuation; scheduling failures are recorded separately from GPU failures.
 A failed display boot disables GPU retries and requests a firmware-fallback reboot
 only when the custom framebuffer actually owns the panel. This preserves the
 existing reference-machine display path. Private method/offset compatibility,

@@ -14,6 +14,7 @@ class BootTests(unittest.TestCase):
         display=patch.object(b.desktop,'begin',return_value=False);display.start();self.addCleanup(display.stop)
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.state=self.root/'state';self.allow=self.root/'allow'
+        cancel=patch.object(b.desktop,'cancel_persistence');cancel.start();self.addCleanup(cancel.stop)
         self.real_metal=b.verify_console_metal
         def verified(package,report,save):report['metal_verified']=True;save()
         self.metal_patch=patch.object(b,'verify_console_metal',side_effect=verified)
@@ -157,18 +158,18 @@ class BootTests(unittest.TestCase):
 
     def test_console_catalogue_absence_does_not_abort_ready_gpu(self):
         report,wait,run,error=self.console_test('catalogue')
-        self.assertIsNotNone(error);run.assert_not_called();self.assertNotIn('metal_verified',report)
+        self.assertIsNotNone(error);run.assert_not_called();self.assertFalse(report.get('metal_verified'))
 
     def test_shader_failure_aborts_and_never_sets_verified(self):
         report,wait,run,error=self.console_test('compute')
-        self.assertIsNotNone(error);self.assertNotIn('metal_verified',report)
+        self.assertIsNotNone(error);self.assertFalse(report.get('metal_verified'))
         self.assertEqual(run.call_args.args[0],[str(self.root/'gpu/phxctl/phxctl'),'abort'])
 
     def test_console_change_retains_readback_evidence_without_enabling_apps(self):
         report,wait,run,error=self.console_test('console-change')
         self.assertIsNotNone(error);self.assertTrue(report['metal_readbacks_verified'])
         self.assertEqual(report['metal_validation_uid'],501);self.assertEqual(report['console_uid_after_validation'],0)
-        self.assertNotIn('metal_verified',report)
+        self.assertFalse(report.get('metal_verified'))
 
     def test_existing_queue_verification_never_launches_native_initialization(self):
         self.state.mkdir();status=self.root/'status.json'

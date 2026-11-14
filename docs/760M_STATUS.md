@@ -1431,3 +1431,56 @@ is included in this private test ZIP. No new public release has been published.
 The local-sudo hp50-install-cache.sh wrapper is staged; reboot is requested only
 if it prints READY FOR GUARDED CACHE DISPLAY TEST. Installation and the actual
 WindowServer retest are pending the user's next action.
+
+### 2026-11-14 persistent WindowServer audit and source repair
+
+Priority is persistence only; brightness, generic support, caches and power work
+are deferred. The entire README and relevant boot/display/installer/recovery code
+were inspected. Installed startup scripts contain a persistence implementation
+absent from this checkout. Their read-only copies were reconciled into source,
+preserving actual consent, request consumption and successful rearming behavior.
+Captured script hashes and sanitized hardware observations are recorded in
+sequoia-persistence-audit.json; raw protected reports stay outside Git.
+
+Three prior hardware boots completed native/GUI Metal/presentation gates and
+reported desktop_persistent_rearmed=true with zero failed display transactions.
+The latest attempted display boot, 14F4EA29-B28A-4847-9BFD-5E249EB2D375, ended
+awaiting-console-session with native checks passed and no GUI Metal completion.
+No terminal failure/error was saved. Its pending marker remains; disabled exists;
+persistent/request records and phxfb-boot are absent. Current boot 7141F5AC is
+profile-diagnostic-only, with no PhxAMDFB/NMXAccel or display counter sysctls.
+The interruption cause cannot be established from the available report. Older
+reports contain genuine package-hash/firmware-entry failures; these protections
+must remain. launchctl currently has no registered job for the configured label;
+the RunAtLoad/LaunchOnlyOnce plist remains present. This alone does not establish
+why the prior process stopped. The current firmware boot is an intentional
+safety lockout following incomplete validation, not a verified rearm omission.
+
+Source corrections: diagnostic blocked-state/prior-stage reporting; a supervisor
+lock; baseline presentation counters before hold release (idle success accepted);
+one bounded console-transition revalidation without native initialization retry;
+rearm gates on complete current-boot evidence; scheduling errors no longer mark a
+healthy GPU/display as failed; NVRAM removal is verified before deleting request
+or consent evidence; explicit installer renewal accepts a valid existing schedule.
+Panic-file baselines block known new panic evidence before native initialization
+and before rearming, alongside the unchanged kext consumption/pending protection.
+No claim is made that absent/delayed panic reports detect every late kernel fault.
+
+Changed implementation: hp_boot.py, hp_windowserver.py and
+install_hp_windowserver.py. The existing framebuffer's early match, exact HP
+plan, held release and forced NVRAM consumption were reviewed and left unchanged.
+No native code/binary, firmware, GPU register, kext, EFI, AMFI or installed system
+file was modified. No kernel rebuild or native reinstall is required.
+
+Validation: full make test passed, including 11 new persistence regressions and
+updated boot tests. Python 3.9 also passed the persistence regressions. Covered:
+three simulated consecutive successful boots; idle-but-presented success; login
+transition; interrupted initialization; real native failure; panic evidence;
+accelerator mismatch; scheduling failure without current-display fallback;
+failed NVRAM cleanup retaining evidence; duplicate supervisors; explicit reviewed
+recovery. These are command/state fixtures, not new hardware acceleration proof.
+
+Physical validation remains: authorized, backed-up scripts-only recovery of this
+idle diagnostic boot, an app-only cold validation boot, then explicit persistent
+authorization and two consecutive accelerated boots. Native component hashes
+must remain identical. Do not clear the existing failure evidence automatically.

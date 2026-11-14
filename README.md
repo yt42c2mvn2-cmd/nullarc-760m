@@ -39,7 +39,7 @@ offscreen validation; it is not part of the published beta. Full device support 
 Download the compiled ZIP from [Releases](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases),
 verify `SHA256SUMS`, extract it and read its `INSTALL.md`. For the already verified
 HP native/app installation, the original command now stages startup updates and
-authorizes one guarded display boot:
+enables guarded persistent display boots after the runtime checks:
 
 ```sh
 sudo ./install.sh --windowserver --check
@@ -49,7 +49,10 @@ sudo ./install.sh --windowserver
 The startup package retains `debug.phxfb_alias=0` and enables the tested SSE4.1
 copy only on capable CPUs. The installer can update startup scripts from a
 healthy accelerated desktop when all native binaries match. It preserves the
-one-shot recovery policy; it does not enable automatic display rearming.
+kernel one-shot consumption: each fully verified accelerated boot schedules its
+successor only with persistent authorization. An interrupted/unverified boot
+blocks retries and requires reviewed recovery. The current persistence source
+repair is tested on the host and has not been installed on the HP.
 Fresh machines need the documented diagnostic, firmware and app-mode stages.
 The reference 780M/Tahoe path remains available, without a new runtime claim.
 
@@ -151,7 +154,7 @@ and [desktop evidence](hardware/dumps/hp_envy_760m/sequoia-resource46-desktop.js
 The new Sequoia `install.sh --windowserver` path first stages the display module
 for an **app-only validation reboot**. Only after that module's loaded UUID,
 runtime family sizes/versions, captured console plan and current-boot app tests
-pass can the same command arm one display boot. New preflight also requires the
+pass can the same command enable guarded persistent display boots. New preflight also requires the
 reviewed Sequoia-compatible AMFIPass version, active service and the authorized
 upstream AMFI arguments in the actual boot; these checks do not prove that
 WindowServer can load the plugin. New crash monitoring

@@ -1,20 +1,141 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""One-shot HP firmware-console presentation; no modesetting or hot takeover."""
+"""HP firmware-console presentation with guarded persistent rearming; no hot takeover."""
 import json
 import os
 from pathlib import Path
 import plistlib
 import shlex
 import struct
+import tempfile
 import subprocess
 import time
 from hp_bringup import claimed_hp,macho_uuid
 from collect_macos_evidence import walk
 
 REQUEST='windowserver-next-boot.json'
-DESKTOP='# NullArc: one-shot HP accelerated compositor; firmware scanout\n-mediaanalysisd\n-photoanalysisd\n-Spotlight\n!WindowServer\n*\n'
+PERSISTENT='windowserver-persistent.json'
+DESKTOP='# NullArc: HP accelerated compositor; firmware scanout\n-mediaanalysisd\n-photoanalysisd\n-Spotlight\n!WindowServer\n*\n'
 class DisplayOwnershipError(ValueError):pass
+
+def _nvram():
+    return plistlib.loads(subprocess.check_output(['/usr/sbin/nvram','-xp'],timeout=5))
+
+def _write_root_record(path,record):
+    """Create a private, non-overwritable authorization file."""
+    created=False
+    try:
+        with path.open('x') as f:
+            created=True
+            os.fchmod(f.fileno(),0o600)
+            json.dump(record,f);f.write('\n');f.flush();os.fsync(f.fileno())
+    except BaseException:
+        if created:path.unlink(missing_ok=True)
+        raise
+
+def _read_root_record(path):
+    if path.is_symlink() or path.stat().st_uid!=0 or path.stat().st_mode&0o077:
+        raise ValueError('unsafe WindowServer authorization file: '+str(path))
+    return json.loads(path.read_text())
+
+def arm_next_boot(state,accelerator_uuid):
+    """Schedule exactly one framebuffer boot, preserving the kext's panic fallback."""
+    request=state/REQUEST
+    if request.exists() or request.is_symlink():raise ValueError('next-boot request already exists')
+    if 'phxfb-boot' in _nvram():raise ValueError('framebuffer NVRAM request already exists')
+    record={'format':1,'armed_from_boot':boot_uuid(),'accelerator_uuid':accelerator_uuid}
+    _write_root_record(request,record)
+    try:
+        subprocess.run(['/usr/sbin/nvram','phxfb-boot=1'],check=True,timeout=5)
+        if _nvram().get('phxfb-boot') not in (b'1','1'):
+            raise ValueError('NVRAM next-boot readback mismatch')
+    except BaseException:
+        # Do not remove the request until the one-shot variable is proven clear.
+        if 'phxfb-boot' in _nvram():
+            subprocess.run(['/usr/sbin/nvram','-d','phxfb-boot'],check=True,timeout=5)
+            if 'phxfb-boot' in _nvram():
+                raise ValueError('next-boot removal failed; retain request for manual review')
+        request.unlink(missing_ok=True)
+        raise
+    return record
+
+def panic_snapshot():
+    result={}
+    for p in CRASH_DIR.iterdir():
+        try:
+            if p.is_file() and ('panic' in p.name.lower() or p.suffix=='.panic'):
+                st=p.stat();result[p.name]=[st.st_mtime_ns,st.st_size]
+        except FileNotFoundError:continue  # DiagnosticReports may rotate files during enumeration.
+    return result
+
+def check_panic_history(config):
+    baseline=config.get('panic_files')
+    if not isinstance(baseline,dict):raise ValueError('persistent authorization needs explicit renewal with panic baseline')
+    if any(baseline.get(k)!=v for k,v in panic_snapshot().items()):
+        raise ValueError('new kernel panic evidence; persistent display requires local review')
+
+def validate_schedule(state,accelerator_uuid):
+    """Read-only validation; a matching already-armed successor is not a failure."""
+    marker=state/PERSISTENT;request=state/REQUEST
+    if marker.exists() or marker.is_symlink():
+        config=_read_root_record(marker)
+        if config.get('format')!=1 or config.get('accelerator_uuid')!=accelerator_uuid:
+            raise ValueError('persistent authorization differs from accelerator')
+        if 'panic_files' in config:check_panic_history(config)
+    nv=_nvram()
+    if request.exists() or request.is_symlink():
+        config=_read_root_record(request)
+        if (config.get('format')!=1 or config.get('accelerator_uuid')!=accelerator_uuid or
+            config.get('armed_from_boot')!=boot_uuid() or nv.get('phxfb-boot') not in (b'1','1')):
+            raise ValueError('stale or mismatched next-boot schedule; local review required')
+        return True
+    if 'phxfb-boot' in nv:raise ValueError('orphan framebuffer NVRAM request; local review required')
+    return False
+
+def authorize_persistent(state,accelerator_uuid):
+    """Explicit installer opt-in/renewal, including matching existing schedules."""
+    armed=validate_schedule(state,accelerator_uuid)
+    marker=state/PERSISTENT
+    record={'format':1,'accelerator_uuid':accelerator_uuid,'enabled_from_boot':boot_uuid(),
+            'panic_files':panic_snapshot()}
+    if marker.exists():
+        fd,name=tempfile.mkstemp(prefix='.persistent-',dir=state)
+        try:
+            with os.fdopen(fd,'w') as f:
+                os.fchmod(f.fileno(),0o600);json.dump(record,f);f.flush();os.fsync(f.fileno())
+            os.replace(name,marker)
+        finally:Path(name).unlink(missing_ok=True)
+    else:_write_root_record(marker,record)
+    if not armed:arm_next_boot(state,accelerator_uuid)
+
+def rearm_if_permanent(package,state,report=None):
+    marker=state/PERSISTENT
+    if not marker.exists() and not marker.is_symlink():return False
+    config=_read_root_record(marker)
+    expected=macho_uuid(package/'Library/Extensions/PhxAccel.kext/Contents/MacOS/PhxAccel')
+    if config.get('format')!=1 or config.get('accelerator_uuid')!=expected:
+        raise ValueError('permanent WindowServer authorization differs from running accelerator')
+    if (not report or report.get('boot_session_uuid')!=boot_uuid() or
+        not all(report.get(k) is True for k in ('native_initialization_verified','metal_verified',
+                'metal_readbacks_verified','desktop_armed','desktop_present_verified','apps_enabled')) or
+        report.get('desktop_failed_transactions')!=0):
+        raise ValueError('current-boot native/Metal/presentation success required before rearming')
+    check_crashes(report,lambda:None)
+    check_panic_history(config)
+    if (state/'disabled').exists():raise ValueError('service disabled before rearming')
+    if not validate_schedule(state,expected):arm_next_boot(state,expected)
+    return True
+
+def clear_next_boot(state):
+    """Preserve evidence until removal of the kernel one-shot is confirmed."""
+    if 'phxfb-boot' in _nvram():
+        subprocess.run(['/usr/sbin/nvram','-d','phxfb-boot'],check=True,timeout=5)
+        if 'phxfb-boot' in _nvram():raise ValueError('could not clear next-boot display NVRAM; manual recovery required')
+    (state/REQUEST).unlink(missing_ok=True)
+
+def cancel_persistence(state):
+    clear_next_boot(state)
+    (state/PERSISTENT).unlink(missing_ok=True)
 
 def require_library_policy():
     """Dependency guard, not proof WindowServer can load our ad-hoc plugin.
@@ -139,23 +260,25 @@ def begin(package,state,folder,progress=None):
     request=state/REQUEST
     if not request.exists():
         if nodes('PhxAMDFB'):raise DisplayOwnershipError('HP framebuffer active without an authorized next-boot request')
+        if (state/PERSISTENT).exists() or (state/PERSISTENT).is_symlink():
+            raise DisplayOwnershipError('persistent display authorization lost its next-boot request')
         return False
-    if request.is_symlink() or request.stat().st_uid!=0 or request.stat().st_mode&0o077:
-        raise ValueError('unsafe next-boot request')
-    config=json.loads(request.read_text())
+    config=_read_root_record(request)
     if config.get('format')!=1 or config.get('armed_from_boot')==boot_uuid():raise ValueError('next-boot request requires a reboot')
     if config.get('accelerator_uuid')!=macho_uuid(package/'Library/Extensions/PhxAccel.kext/Contents/MacOS/PhxAccel'):
         raise ValueError('next-boot accelerator differs from request')
-    request.rename(folder/REQUEST)  # consumed, never automatically re-armed
+    if (state/PERSISTENT).exists():
+        check_panic_history(_read_root_record(state/PERSISTENT))
+    request.rename(folder/REQUEST)  # consumed; only verified success may arm the following boot
     # Do not clear the request while System/Aux driver matching is pending.
     # GPU initialization remains forbidden until the validated held FB appears.
     try:
         wait_for_framebuffer(progress=progress)
         require_library_policy()
-        nv=plistlib.loads(subprocess.check_output(['/usr/sbin/nvram','-xp'],timeout=5))
+        nv=_nvram()
         if 'phxfb-boot' in nv:raise ValueError('attached framebuffer did not consume its one-shot')
     except (OSError,ValueError,subprocess.SubprocessError):
-        nv=plistlib.loads(subprocess.check_output(['/usr/sbin/nvram','-xp'],timeout=5))
+        nv=_nvram()
         if 'phxfb-boot' in nv:subprocess.run(['/usr/sbin/nvram','-d','phxfb-boot'],check=True,timeout=5)
         raise
     return True
@@ -195,6 +318,7 @@ def arm(report,save,allow,atomic):
     unopened_held_framebuffer()
     report['desktop_phase']='releasing-panel';save()
     watch_crashes(report)
+    report['desktop_present_baseline']=sysctl('debug.nvaccel_iop_ok')
     atomic(allow,DESKTOP)
     sysctl('debug.phxfb_hold',0)
     if sysctl('debug.phxfb_hold')!=0:raise ValueError('framebuffer hold did not release')
@@ -203,13 +327,16 @@ def arm(report,save,allow,atomic):
 def verify_present(report,save,timeout=120):
     # Registration is not rendering proof. Require actual presents and a live
     # WindowServer framebuffer client, then retain counters as evidence.
-    start=sysctl('debug.nvaccel_iop_ok');deadline=time.monotonic()+timeout
+    observed=sysctl('debug.nvaccel_iop_ok')
+    start=report.get('desktop_present_baseline',observed);deadline=time.monotonic()+timeout
+    if not isinstance(start,int) or start<0 or observed<start:raise ValueError('display present counter regressed')
     while time.monotonic()<deadline:
         check_crashes(report,save)
         current=sysctl('debug.nvaccel_iop_ok');failed=sysctl('debug.nvaccel_iop_fail')
         f=framebuffer()
         client=f and any(n.get('IOObjectClass')=='IOFramebufferUserClient' for n in walk([f]))
         if failed:raise ValueError('display pipe reported failed transactions')
+        if current<start:raise ValueError('display present counter regressed')
         if current>start and client:
             report.update(desktop_present_verified=True,desktop_present_count=current,
                           desktop_present_delta=current-start,desktop_failed_transactions=failed)
@@ -218,7 +345,7 @@ def verify_present(report,save,timeout=120):
     raise ValueError('no verified WindowServer display-pipe presents before deadline')
 
 def fallback(report,save):
-    """A consumed one-shot returns to firmware scanout on the next boot."""
+    """A failed display boot returns to firmware scanout without another arm."""
     report['desktop_phase']='failed-reboot-to-firmware-required';save()
     # Only used by the opted-in next-boot experiment when PhxAMDFB owns the panel.
     # Never try to hot-detach a framebuffer or initialize a second GPU queue set.

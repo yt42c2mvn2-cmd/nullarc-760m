@@ -76,10 +76,13 @@ sudo ./install.sh --windowserver
 
 For an existing healthy accelerated HP desktop with identical native binaries,
 the same command backs up the daemon and stages an immutable startup-only update;
-it applies the measured PCI-aperture/SSE copy selection and arms one next boot.
+it applies the measured PCI-aperture/SSE copy selection and authorizes persistent
+rearming after fully verified display boots.
 It does not reload a kext or reinitialize GPU queues. These copy defaults persist
 in that installed startup package. The display request is still consumed once;
-run the command again to authorize a later display boot. `--oc /path/to/EFI/OC`
+the supervisor creates the next request only after native, GUI Metal and
+WindowServer presentation checks pass. Matching existing schedules are accepted
+by the installer; stale or mismatched requests require review. `--oc /path/to/EFI/OC`
 selects the boot USB (default `/Volumes/EFI/EFI/OC`). Early framebuffer metadata
 is verified and backed up if replacement is needed; `config.plist` is unchanged.
 A verified HP native/app boot service is required; this is not a fresh-machine
@@ -113,7 +116,8 @@ After those checks pass, run the same command again. It verifies the measured
 1920×1200 console, 2260×1240 timing totals, firmware reservations and display ABI,
 then writes a root-only next-boot request and `phxfb-boot=1`. Reboot with the same
 USB. The kext consumes/commits removal of that NVRAM flag before attachment. This
-is one display boot, never automatically rearmed. The console presenter changes
+is one framebuffer attachment per request. Persistent authorization allows the
+supervisor to schedule a successor only after that boot is fully verified. The console presenter changes
 no display registers; the existing GPU display pipe copies completed frames into
 the firmware scanout surface. Its 60 Hz clock is nominal, derived from captured
 totals and corroborated panel mode, not a measured/programmed PLL clock.
@@ -384,3 +388,35 @@ submits test shaders but never reinitializes PCI, firmware, GART or MES. No rebo
 is required. A lost driver or shader-failure class is refused. Only successful
 readbacks enable app access; WindowServer stays denied. The third HP boot already
 passed post-boot SSH Metal tests without repeating native initialization.
+
+## Persistence repair audit (2026-11-14; source only)
+
+The HP reports prove three consecutive accelerated boots successfully rearmed.
+The following boot stopped at `awaiting-console-session`, after native checks but
+before GUI Metal/presentation completion. Its `pending` marker survived; later
+boots created `disabled` and cancelled persistent authorization. This is an
+unverified interrupted boot, not proof that a successful boot forgot to rearm.
+Do not delete these markers or infer GPU success from initialization alone.
+
+The revised Python source preserves that safeguard and records the blocker plus
+prior report in public status. Presentation validation uses a counter baseline
+captured before panel release, so a rendered desktop need not animate again
+while idle. One console-user transition gets bounded revalidation on the same
+queues. Scheduling errors retain healthy current display/Metal status; unclear
+NVRAM cleanup blocks the successor. Duplicate supervisors cannot overwrite live
+status. New panic records prevent persistent continuation, and the kernel still
+consumes/commits its one-shot. Legacy authorization needs explicit installer
+renewal to add a panic baseline. Missing or delayed panic records still need
+physical-machine testing; no new kernel panic detector is claimed.
+
+No installed system file has been changed for this audit. Applying the repair
+requires explicit authorization for a backed-up, scripts-only update that clones
+the existing immutable package, preserves every native binary/firmware hash and
+backs up the reviewed interrupted-boot markers. The first recovery boot must stay
+on the firmware framebuffer and verify native/GUI Metal. Then the normal installer
+can explicitly authorize persistence. Test two consecutive accelerated boots,
+including idle presentation and a login transition, and inspect both successor
+requests/NVRAM and protected reports. Do not retry a failed initialization in the
+same boot. Existing recovery flags cover specific older failures and must not be
+used to bypass this interrupted-boot review. No kext, RADV, Metal plugin, security
+setting, OpenCore configuration or display-register update is needed.
