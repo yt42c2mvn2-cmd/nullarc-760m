@@ -1499,3 +1499,24 @@ and the launch-daemon package path before claiming application. Reboot only on
 READY FOR APP-ONLY RECOVERY REBOOT; collect fresh app-mode evidence before display
 authorization. The original immutable package and protected failure evidence stay
 in backups. No native component rebuild/replacement is authorized or required.
+
+
+The scripts-only recovery is active in package-startup-yf2ix6ho. Its manifest
+records startup patch 010610d and both installed boot/display scripts match the
+approved source. Cold boot 5BA4BD11-1D2B-4FE8-860C-DC5A7B9EDF91 passed native
+compute/render, GUI Metal compute/render and app activation on the firmware
+framebuffer, with startup_stage=complete and no reported error. PhxBringup is
+native-queues-ready; NMXAccel is present and PhxAMDFB absent as planned.
+All 11 native groups match the original immutable package; installed plugin,
+RADV and translator hashes also match. Read-only signing/ABI/display-plan and
+injected early-framebuffer metadata checks passed without EFI writes.
+Evidence: sequoia-persistence-recovery-apps.json. The recovery helper's user-home
+receipt was not found over SSH; installation/validation is independently proven
+by the daemon path, source hashes, manifest and fresh boot results above.
+
+The approved follow-up helper ~/arm-persistence.py and approved-patch.json are
+staged in the HP home. Local sudo was requested only for protected authorization
+records and the one-shot NVRAM flag, after checking current app validation and
+unchanged native groups. It changes no native/EFI files. Reboot only after READY
+FOR PERSISTENT DISPLAY REBOOT, log in, and collect current-boot presentation and
+successor-request evidence. The first/second accelerated boots are still pending.

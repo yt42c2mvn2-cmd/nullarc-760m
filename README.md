@@ -52,7 +52,8 @@ healthy accelerated desktop when all native binaries match. It preserves the
 kernel one-shot consumption: each fully verified accelerated boot schedules its
 successor only with persistent authorization. An interrupted/unverified boot
 blocks retries and requires reviewed recovery. The current persistence source
-repair is tested on the host and has not been installed on the HP.
+repair is installed and has passed an app-only cold boot on the HP; two
+consecutive persistent display boots still require verification.
 Fresh machines need the documented diagnostic, firmware and app-mode stages.
 The reference 780M/Tahoe path remains available, without a new runtime claim.
 
