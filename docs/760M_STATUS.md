@@ -1484,3 +1484,18 @@ Physical validation remains: authorized, backed-up scripts-only recovery of this
 idle diagnostic boot, an app-only cold validation boot, then explicit persistent
 authorization and two consecutive accelerated boots. Native component hashes
 must remain identical. Do not clear the existing failure evidence automatically.
+
+
+Scripts-only recovery was explicitly authorized. The pinned patch ZIP and the
+reviewed-state recovery helper are staged in the HP user's home as
+persistence-repair-010610d.zip and apply-recovery.py. The helper verifies a fresh
+idle diagnostic boot, the exact interrupted report, marker/panic history and
+original script hashes; clones the current installed package; uses the tested
+stage_service transaction; backs up/moves pending and disabled; and verifies
+installed native trees are byte-identical. It never starts the service/GPU,
+changes NVRAM/EFI/security or reboots. SSH has no noninteractive sudo, so local
+sudo execution was requested. Check ~/nullarc-persistence-recovery-result.json
+and the launch-daemon package path before claiming application. Reboot only on
+READY FOR APP-ONLY RECOVERY REBOOT; collect fresh app-mode evidence before display
+authorization. The original immutable package and protected failure evidence stay
+in backups. No native component rebuild/replacement is authorized or required.
