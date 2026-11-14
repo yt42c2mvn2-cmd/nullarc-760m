@@ -4,6 +4,22 @@
 
 The implementation provides native GPU queues, a Metal-facing plugin implemented over Vulkan/Mesa RADV, and an opt-in accelerated WindowServer framebuffer. It incorporates derivative components from the original NullArc/NullMoth work; see [Licenses and attribution](#licenses-and-attribution).
 
+## New source preview — 0.3.0 (not an installable driver build)
+
+**[v0.3.0 Sequoia source preview](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases/tag/v0.3.0-sequoia-source-preview)**
+contains the source for the guarded WindowServer persistence repair,
+hardware-aware Radeon profiles/discovery and experimental native ACPI brightness bridge.
+Host tests and source compilation are documented, but the revised native kexts,
+Metal plugin and RADV have **not been re-packaged as a validated installable release**.
+Brightness operation and two consecutive accelerated persistence boots remain unverified
+on the actual HP. Other laptops remain diagnostic-only.
+
+Do **not** substitute the previous 0.2.0 compiled binaries for newly modified native
+code. For an already installed working HP build, keep using the pinned 0.2.0
+installer below until a matching rebuilt and hardware-validated package exists.
+
+See [0.3.0 preview release notes](docs/RELEASE_0.3.0_SOURCE_PREVIEW.md).
+
 ## Download — one current Sequoia installer
 
 **[Release v0.2.0 — Sequoia beta](https://github.com/yt42c2mvn2-cmd/nullarc-760m/releases/tag/v0.2.0-sequoia-beta)**

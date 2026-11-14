@@ -1,0 +1,98 @@
+name: Publish NullArc 760M 0.3.0 source preview
+
+on:
+  push:
+    branches:
+      - codex/760m-hardware-discovery-backlight
+    paths:
+      - .github/workflows/publish-0.3.0-source-preview.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nullarc760m-source-preview-v0.3.0
+  cancel-in-progress: false
+
+jobs:
+  source-preview:
+    if: github.repository == 'yt42c2mvn2-cmd/nullarc-760m'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate new persistence and hardware profile logic
+        run: |
+          set -euo pipefail
+          python3 -B tests/test_hp_persistence.py
+          python3 -B tests/test_hp_boot.py
+          python3 -B tests/test_hp_windowserver.py
+          python3 -B tests/test_hp_arm_receipt.py
+          python3 -B tests/test_hardware_discovery.py
+          python3 -B tests/test_mesa_profile_registry.py
+          python3 -B tests/test_hp_cached_plugin_install.py
+          python3 -B tests/test_release_install.py
+          python3 -B tests/test_component_install.py
+          python3 -B tests/test_hp_boot_recovery.py
+
+      - name: Archive exact tagged source and verify integrity
+        run: |
+          set -euo pipefail
+          TAG=v0.3.0-sequoia-source-preview
+          ZIP=nullarc-760m-v0.3.0-sequoia-source-preview.zip
+          mkdir -p dist
+          git archive --format=zip --prefix="nullarc-760m-$TAG/" "$GITHUB_SHA" -o "dist/$ZIP"
+          unzip -tq "dist/$ZIP"
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          archive=Path('dist/nullarc-760m-v0.3.0-sequoia-source-preview.zip')
+          prefix='nullarc-760m-v0.3.0-sequoia-source-preview/'
+          required=['README.md','docs/RELEASE_0.3.0_SOURCE_PREVIEW.md',
+                    'docs/HARDWARE_SUPPORT.md','tools/phxctl/hp_boot.py',
+                    'tools/phxctl/hp_windowserver.py','src/phxaccel/accel/phxbacklight.cpp',
+                    'tools/collect_hardware.py','hardware/devices/registry.json',
+                    'src/nmplugin/nvmtl_pipeline_cache_io.h']
+          with zipfile.ZipFile(archive) as z:
+              members=set(z.namelist())
+              for file in required:
+                  if prefix+file not in members:
+                      raise SystemExit('Missing source: '+file)
+          print('Source archive includes reviewed changes; no binaries claimed.')
+          PY
+          (cd dist && sha256sum "$ZIP" > SHA256SUMS-source-preview && sha256sum -c SHA256SUMS-source-preview)
+
+      - name: Publish separate pre-release from reviewed development branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=v0.3.0-sequoia-source-preview
+          ZIP=nullarc-760m-v0.3.0-sequoia-source-preview.zip
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to replace it."
+            exit 1
+          fi
+          gh release create "$TAG" "dist/$ZIP" dist/SHA256SUMS-source-preview \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "NullArc-760M 0.3.0 — Sequoia source preview (no new compiled drivers)" \
+            --notes-file docs/RELEASE_0.3.0_SOURCE_PREVIEW.md \
+            --prerelease
+
+      - name: Verify published source ZIP byte-for-byte
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=v0.3.0-sequoia-source-preview
+          ZIP=nullarc-760m-v0.3.0-sequoia-source-preview.zip
+          mkdir -p dist/remote
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ZIP" --dir dist/remote
+          cp dist/SHA256SUMS-source-preview dist/remote/
+          (cd dist/remote && sha256sum -c SHA256SUMS-source-preview)
+          cmp "dist/$ZIP" "dist/remote/$ZIP"
+          echo 'Published source preview matches reviewed source archive.'
