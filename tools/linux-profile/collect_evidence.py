@@ -44,10 +44,18 @@ def copy_sysfs(device, dest, errors):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--device', type=Path, required=True, help='/dev/dri/renderD128 for the HP')
+    ap.add_argument('--device', type=Path, help='AMD DRM render node; autodetect when exactly one exists')
     ap.add_argument('--collector', type=Path, required=True, help='compiled collect.c executable')
     ap.add_argument('--output', type=Path, required=True)
     a = ap.parse_args()
+    if a.device is None:
+        candidates=[]
+        for path in sorted(Path('/sys/class/drm').glob('renderD*')):
+            try:
+                if int((path/'device/vendor').read_text(),16)==0x1002:candidates.append(Path('/dev/dri')/path.name)
+            except (OSError,ValueError):continue
+        if len(candidates)!=1:ap.error('no unique AMD render node; use collect_hardware.py to capture all devices')
+        a.device=candidates[0]
     st = a.device.stat()
     if not stat.S_ISCHR(st.st_mode): ap.error('expected a DRM character device')
     device = (Path('/sys/dev/char')/f'{os.major(st.st_rdev)}:{os.minor(st.st_rdev)}'/'device').resolve(strict=True)
@@ -55,8 +63,8 @@ def main():
     if not re.fullmatch(r'[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]', bdf): ap.error('DRM device has no PCI parent')
     ids = {key:int((device/name).read_text(),16) for key,name in [('vendor','vendor'),('device','device'),
         ('revision','revision'),('subvendor','subsystem_vendor'),('subdevice','subsystem_device')]}
-    if ids != {'vendor':0x1002,'device':0x1900,'revision':0xca,'subvendor':0x103c,'subdevice':0x8c6a}:
-        ap.error('DRM node is not the exact captured HP PCI identity')
+    if ids['vendor']!=0x1002:
+        ap.error('DRM node is not AMD')
     a.output.mkdir(parents=True, exist_ok=False)
     errors = []
     result = subprocess.run([str(a.collector.resolve()),str(a.device)],capture_output=True)

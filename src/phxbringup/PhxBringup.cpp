@@ -20,7 +20,7 @@
 #include "PhxExecutionPolicy.h"
 #include "PhxPspPolicy.h"
 #include "PhxFirmwareState.h"
-#include "../amd/phx_hp_760m.h"
+#include "../amd/phx_hardware_profile.h"
 #include "../amd/phx_vbios.h"
 #include "../amd/phx_vram_arena.h"
 #include "../amd/phx_hp_memory.h"
@@ -98,13 +98,14 @@ public:
         if (!isLost() && accelerationReady() && !liveAddressConfig) liveAddressConfig=rreg(0x263e);
         return liveAddressConfig;
     }
-    uint64_t visibleBudget() const { return topology ? (fbSize<fbAperLen ? fbSize : fbAperLen) : kVisTotal; }
-    uint64_t highBudget() const { return topology ? fbSize-visibleBudget() : kHiTotal; }
+    uint64_t visibleBudget() const { if(!hardwareProfile)return 0;return topology ? (fbSize<fbAperLen ? fbSize : fbAperLen) : kVisTotal; }
+    uint64_t highBudget() const { if(!hardwareProfile)return 0;return topology ? fbSize-visibleBudget() : kHiTotal; }
     // E8: GPU execution. The userspace bring-up maps MES queues (compute = 0, gfx = 1) and hands them over (adoptQueue);
     // user BOs are then mapped into the VMID 8 page table and SUBMIT writes INDIRECT_BUFFERs into the queue's ring.
     IOReturn adoptQueue(const uint64_t in[6]);
     IOReturn claimAccel();
-    bool diagnosticOnly() const { return topology != nullptr && !hpMemoryReady(); }
+    bool profileSupported() const { return phxProfileCanInitialize(hardwareProfile); }
+    bool diagnosticOnly() const { return !phxProfileCanInitialize(hardwareProfile) || (topology && !hpMemoryReady()); }
     IOReturn beginHpBootstrap();
     const phx_topology *capturedTopology() const { return topology; }
     bool memoryLayout(phx_memory_layout &out) const;
@@ -138,6 +139,7 @@ private:
     void clearRing();
     IOReturn prepareBootstrap(uint64_t requestedRing); // caller holds smuLock
 
+    const PhxHardwareProfile *hardwareProfile{nullptr};
     const phx_topology *topology{nullptr};
     IOPCIDevice *pci{nullptr};
     IOMemoryMap *mmio{nullptr};
@@ -324,14 +326,20 @@ bool PhxBringup::start(IOService *provider) {
     if (!pci)
         return false;
     pci->retain();
-    if (phx_topology_matches(&phx_hp_760m, pci->configRead16(0), pci->configRead16(2),
-            pci->configRead8(8), pci->configRead16(0x2c), pci->configRead16(0x2e))) {
-        topology = &phx_hp_760m;
+    hardwareProfile=phxFindHardwareProfile(pci->configRead16(0),pci->configRead16(2),
+        pci->configRead8(8),pci->configRead16(0x2c),pci->configRead16(0x2e));
+    setProperty("phx-profile",hardwareProfile?hardwareProfile->name:"unknown-diagnostic");
+    if (hardwareProfile && hardwareProfile->topology) {
+        topology = hardwareProfile->topology;
         setProperty("phx-profile", "hp-760m");
         setProperty("phx-profile-source", "captured-drm-not-live");
         setProperty("phx-bringup-blocker", "HP runtime memory reservations, firmware/MES initialization and fence validation required");
         pci->setProperty("phx-diagnostic-only", kOSBooleanTrue);
         IOLog("PhxBringup: stage PCI/profile OK: HP 760M, 8 captured CUs; hardware writes disabled\n");
+    }
+    if (!phxProfileCanInitialize(hardwareProfile)) {
+        pci->setProperty("phx-diagnostic-only",kOSBooleanTrue);
+        setProperty("phx-bringup-blocker","unreviewed board: collect hardware evidence; no GPU or PCI command writes");
     }
     if (!diagnosticOnly()) {   // the GPU must be a bus master before it can DMA to/from system memory (page tables, user BOs)
         uint16_t cmd = pci->configRead16(kIOPCIConfigCommand);
@@ -340,13 +348,13 @@ bool PhxBringup::start(IOService *provider) {
         pci->setMemoryEnable(true);
         setProperty("phx-pci-cmd-after", pci->configRead16(kIOPCIConfigCommand), 16);
     }
-    mmio = pci->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress5);
-    fbAper = pci->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress0);
+    if (phxProfileCanInitialize(hardwareProfile)) mmio = pci->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress5);
+    if (phxProfileCanInitialize(hardwareProfile)) fbAper = pci->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress0);
     if (fbAper) {
         fbAperLen = fbAper->getLength();
         fbAperPhys = fbAper->getPhysicalAddress();
     }
-    doorbellMap = pci->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
+    if (phxProfileCanInitialize(hardwareProfile)) doorbellMap = pci->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
     smuLock = IOLockAlloc();
     gpuLock = IOLockAlloc();
     if (!smuLock || !gpuLock) { stop(provider);return false; }
@@ -361,7 +369,7 @@ bool PhxBringup::start(IOService *provider) {
             hdpFlushDword = remap >> 2;
         setProperty("phx-hdp-flush-dword", hdpFlushDword, 32);
     }
-    readFirmwareLayout();
+    if (hardwareProfile) readFirmwareLayout();
     setProperty("phx-build", PHX_KEXT_BUILD, 32);
     setProperty("phx-stage", diagnosticOnly() ? "profile-diagnostic-only" : "E3");
     setProperty("phx-debug", debug);
@@ -454,9 +462,8 @@ void PhxBringup::readFbLayout() {
     setProperty("phx-fb-phys", fbPhys, 64);
     // About This Mac / System Information name the GPU from the PCI device's "model" and size its memory from
     // "VRAM,totalMB"; without them the 780M read "Display, 15 MB" (the boot framebuffer)
-    static const char hpModel[] = "AMD Radeon 760M", legacyModel[] = "AMD Radeon 780M";
-    const char *model = diagnosticOnly() ? hpModel : legacyModel;
-    const unsigned modelSize = diagnosticOnly() ? sizeof(hpModel) : sizeof(legacyModel);
+    const char *model = hardwareProfile ? hardwareProfile->model : "AMD GPU";
+    const unsigned modelSize = (unsigned)strlen(model)+1;
     if (OSData *m = OSData::withBytes(model, modelSize)) {
         pci->setProperty("model", m);
         m->release();
@@ -665,13 +672,14 @@ uint64_t *PhxBringup::ptTable(const VmCtx &c, uint64_t phys) const {
 // region exclusively. This is deliberately NOT an ownership attestation for HP.
 // A future HP pool must come from its complete firmware/display reservation map.
 IOReturn PhxBringup::prepareBootstrap(uint64_t requestedRing) {
+    if (!phxProfileCanInitialize(hardwareProfile)) return kIOReturnUnsupported;
     if (topology) {
         phx_memory_layout memory{};uint32_t first[PHX_RESERVATION_REG_COUNT],second[PHX_RESERVATION_REG_COUNT];
         if (!pciOwned || !memoryLayout(memory)) return kIOReturnNotReady;
         for (unsigned i=0;i<PHX_RESERVATION_REG_COUNT;++i) first[i]=rreg(phx_reservation_registers[i].dword);
         for (unsigned i=0;i<PHX_RESERVATION_REG_COUNT;++i) second[i]=rreg(phx_reservation_registers[i].dword);
-        if (!phxHpMemoryMatches(memory,firmwareInfo,first,second)) {
-            setProperty("phx-bringup-blocker","live HP firmware/display reservation configuration differs from captured profile");
+        if (!phxMemoryProfileMatches(memory,firmwareInfo,first,second,PHX_RESERVATION_REG_COUNT,*hardwareProfile->memory)) {
+            setProperty("phx-bringup-blocker","live firmware/display reservation configuration differs from captured profile");
             return kIOReturnUnsupported;
         }
     } else if (fbMcBase!=0x8000000000ull || fbPhys!=0x6a0000000ull ||
@@ -682,8 +690,12 @@ IOReturn PhxBringup::prepareBootstrap(uint64_t requestedRing) {
     PhxVramLease ring,fw,mes;
     // Existing reference console [0,0xfa0000); round its exclusion up to 16 MiB.
     // Existing MES experiments use [32,40) MiB, including GART/MQDs/readbacks.
-    const uint64_t prefix=topology ? phx_hp_console_exclusion : 16ull<<20;
-    if (!pending.begin(fbAperLen) || !pending.exclude(0,prefix) || !pending.seal() ||
+    const uint64_t prefix=topology ? hardwareProfile->memory->console_exclusion : 16ull<<20;
+    if (!pending.begin(fbAperLen)) return kIOReturnBadArgument;
+    if (topology) {
+        if (!phxExcludeProfileReservations(pending,fbAperLen,*hardwareProfile->memory)) return kIOReturnBadArgument;
+    } else if (!pending.exclude(0,prefix)) return kIOReturnBadArgument;
+    if (!pending.seal() ||
         !pending.allocateAt(32ull<<20,8ull<<20,mes) ||
         !pending.allocateAt(requestedRing,PHX_PSP_FENCE_REL+0x1000,ring) ||
         !pending.allocateAt(PHX_VRAM_FWBUF_OFF,PHX_VRAM_FWBUF_SIZE,fw)) return kIOReturnBadArgument;
@@ -1750,6 +1762,7 @@ IOReturn IOAccelPhxNativeClient::doVbiosRead(IOExternalMethodArguments *a) {
 IOReturn IOAccelPhxNativeClient::doQueryInfo(IOExternalMethodArguments *a) {
     if (!shape(a, 0, 0, 0, sizeof(phxn_info)))
         return kIOReturnBadArgument;
+    if (!owner->profileSupported()) return kIOReturnUnsupported; // no invented legacy capabilities
     phxn_info inf;
     bzero(&inf, sizeof(inf));
     inf.abi_version = PHXN_ABI_VERSION;

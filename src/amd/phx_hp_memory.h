@@ -10,7 +10,8 @@
 #include "phx_reservation_regs.h"
 #include "phx_memory_layout.h"
 #include "phx_vbios.h"
-struct PhxHpMemoryExpected { uint32_t value,mask; };
+#include "phx_memory_profile.h"
+using PhxHpMemoryExpected=PhxRegisterExpected;
 static const PhxHpMemoryExpected phx_hp_memory_expected[]={
     {0x8u,0xffffffffu}, // regHUBP0_DCSURF_SURFACE_CONFIG
     {0x0u,0xffffffffu}, // regHUBP0_DCSURF_ADDR_CONFIG
@@ -141,18 +142,13 @@ static const PhxHpMemoryExpected phx_hp_memory_expected[]={
 // Allocation policy: round the measured 9,216,000-byte linear console prefix
 // up to 16 MiB. This is conservative protection, not a hardware size claim.
 static const uint64_t phx_hp_console_exclusion=16ull<<20;
+static const PhxMemoryProfile phx_hp_memory_profile={
+    0x8000000000ull,0x260000000ull,512ull<<20,256ull<<20,phx_hp_console_exclusion,
+    2,3,2,1,3,4,0x160c001bu,2,1,0,0,0,2ull<<20,
+    phx_hp_memory_expected,PHX_RESERVATION_REG_COUNT,nullptr,0
+};
 static inline bool phxHpMemoryMatches(const phx_memory_layout &m,const PhxVbiosInfo &f,
                                      const uint32_t *first,const uint32_t *second) {
-    if (!phx_memory_layout_valid(&m) || !first || !second ||
-        m.mc_base!=0x8000000000ull || m.physical_base!=0x260000000ull ||
-        m.vram_bytes!=(512ull<<20) || m.cpu_aperture_bytes!=(256ull<<20) ||
-        f.romFormat!=2 || f.romContent!=3 || f.masterFormat!=2 || f.masterContent!=1 ||
-        f.firmwareFormat!=3 || f.firmwareContent!=4 || f.firmwareRevision!=0x160c001bu ||
-        !f.usageDecoded || f.usageFormat!=2 || f.usageContent!=1 || f.firmwareStartRawKiB ||
-        f.firmwareUsageBytes || f.driverUsageBytes || !f.extraDecoded || f.extraFirmwareBytes!=(2ull<<20)) return false;
-    for (unsigned i=0;i<PHX_RESERVATION_REG_COUNT;++i)
-        if ((first[i]&phx_hp_memory_expected[i].mask)!=phx_hp_memory_expected[i].value ||
-            (second[i]&phx_hp_memory_expected[i].mask)!=phx_hp_memory_expected[i].value) return false;
-    return true;
+    return phxMemoryProfileMatches(m,f,first,second,PHX_RESERVATION_REG_COUNT,phx_hp_memory_profile);
 }
 #endif

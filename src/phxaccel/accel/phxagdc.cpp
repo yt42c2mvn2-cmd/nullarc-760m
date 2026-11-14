@@ -53,7 +53,8 @@ OSDefineMetaClassAndStructors(PhxDeviceControl, AppleGraphicsDeviceControl)
 // CVT reduced-blanking timing for the panel's mode (PhxFB's IOFBConfig), in nvrm-agdc-k5.h's word layout.
 static bool panelTiming(uint32_t t[NVK5_TIMING_WORDS])
 {
-    uint32_t w = 2560, h = 1600, mhz = 60000, ht = 0, vt = 0;
+    if (!gFB) return false;
+    uint32_t w = 0, h = 0, mhz = 0, ht = 0, vt = 0;
     if (gFB) {
         const char *keys[5] = { "PhxFBWidth", "PhxFBHeight", "PhxFBRefreshMilliHz", "PhxFBHTotal", "PhxFBVTotal" };
         uint32_t *dst[5] = { &w, &h, &mhz, &ht, &vt };
@@ -63,10 +64,11 @@ static bool panelTiming(uint32_t t[NVK5_TIMING_WORDS])
             OSSafeReleaseNULL(o);
         }
     }
+    if (!w || !h || !mhz || w>16384 || h>16384 || mhz>1000000) return false;
     // the totals and refresh PhxAMDFB read off the display engine; CVT-RB (48/32/80 horizontal, 3/6/37 vertical) otherwise
     const uint32_t htot = ht > w ? ht : w + 160, vtot = vt > h ? vt : h + 46;
     uint32_t hss=w+48,hse=w+80,vss=h+3,vse=h+9,hpositive=1,vpositive=0;
-    if (gFB && gFB->getProperty("PhxFBHP")==kOSBooleanTrue) {
+    if (gFB && gFB->getProperty("PhxFBTimingCaptured")==kOSBooleanTrue) {
         if (gFB->getProperty("PhxFBTimingCaptured")!=kOSBooleanTrue || ht<=w || vt<=h) return false;
         const char *keys[]={"PhxFBHSyncStart","PhxFBHSyncEnd","PhxFBVSyncStart","PhxFBVSyncEnd"};
         uint32_t *values[]={&hss,&hse,&vss,&vse};

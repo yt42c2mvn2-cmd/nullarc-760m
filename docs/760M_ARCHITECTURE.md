@@ -318,3 +318,19 @@ v6.14 `dcn10_optc.c`/DCN 3.1.4 register definitions. The framebuffer base does n
 open its provider in those Apple sources; this matters because PhxBringup must
 still acquire exclusive PCI ownership later. Timing decode/capture provenance is
 in `hardware/profiles/hp-760m-display-registers.json`.
+
+## Hardware profiles and backlight bridge (source, 2026-11-14)
+
+`hardware/devices/registry.json` plus reviewed native contracts generate
+`phx_hardware_registry.inc` for PhxBringup/NMXAccel/PhxAMDFB and
+`phx_radv_profiles.h` for Mesa patch 0014. Common memory/display profile validators
+preserve the HP data while supporting explicit geometry, scanout offsets and
+reservation exclusions. Unknown devices cannot inherit reference initialization.
+The manufacturer-neutral collector reads existing OS interfaces; reports cannot
+authorize native initialization. Metal translation remains shared.
+
+PhxAMDFB optionally publishes the ACPI-backed `IODisplayParameterHandler` and
+native LCD/EDID interfaces; serialized worker transitions validate every brightness
+write with `_BQC`. Unsupported PWM/AUX/OEM-key paths remain diagnostic. No installed
+binary has changed and no physical brightness success is claimed. See
+[contracts, limitations and validation](HARDWARE_SUPPORT.md).

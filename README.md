@@ -25,6 +25,15 @@
 
 ## Radeon 760M fork status
 
+**Source development: hardware profiles and native backlight bridge.** Reviewed
+profiles now select the kernel and RADV configuration; unknown laptops are
+read-only diagnostic targets, rather than inheriting Firebat initialization.
+The manufacturer-neutral collector and native ACPI backlight implementation are
+host-tested; brightness and additional manufacturers are **not hardware-verified**.
+Installed HP binaries have not been replaced. See [hardware support, collection
+and brightness status](docs/HARDWARE_SUPPORT.md).
+
+
 **Hardware-verified on the HP Envy x360 16-ad0013dx, Sequoia 15.8.2:** native
 command execution, Metal compute/render, IOSurface sharing, framebuffer fetch,
 and an accelerated WindowServer desktop. The measured PCI-aperture copy path
@@ -224,7 +233,7 @@ or accelerated display success is claimed by this build.
 See [development status](docs/760M_STATUS.md), [source dependency map](docs/760M_ARCHITECTURE.md),
 and [build, package, offline translation tests and diagnostic installation](docs/BUILD_STACK.md).
 Validate the supplied profile with `python3 tools/phx_profile.py --check`.
-Mesa uses Phoenix patches 0001..0013; generator scripts are alternatives to applying
+Mesa uses Phoenix patches 0001..0014; generator scripts are alternatives to applying
 the corresponding patches, not additional steps.
 
 ## Status

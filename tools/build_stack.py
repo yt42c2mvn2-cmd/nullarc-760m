@@ -113,7 +113,7 @@ def verify_build_receipt(mesa, min_macos=None, mesa_build=None):
 
 
 def assemble(a):
-    for name in ('phx_topology.h', 'phx_hp_760m.h', 'phx_hp_760m_device.h'):
+    for name in ('phx_topology.h', 'phx_hp_760m.h', 'phx_hp_760m_device.h','phx_radv_profiles.h'):
         if (a.mesa / 'src/amd/common/darwin' / name).read_bytes() != (REPO / 'src/amd' / name).read_bytes():
             raise ValueError('Mesa topology headers differ; apply the documented patches')
     if 'native queues are not ready' not in (a.mesa / 'src/amd/common/darwin/ac_darwin_drm.c').read_text():
@@ -165,7 +165,7 @@ def assemble(a):
         for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'LICENSES'):
             copy(REPO / name, p / name)
         for name in ('760M_STATUS.md', '760M_ARCHITECTURE.md', 'BUILD_STACK.md', 'LINUX_VALIDATION.md',
-                     'INSTALL.md','INSTALL_REFERENCE.md'):
+                     'INSTALL.md','INSTALL_REFERENCE.md','HARDWARE_SUPPORT.md'):
             copy(REPO / 'docs' / name, p / 'docs' / name)
         for name in ('install_diagnostics.py','install_components.py','prepare_experiment.py','install_hp_boot.py','recover_hp_boot.py','install_hp_windowserver.py','install_hp_cached_plugin.py','update_hp_aux.py','fix_hp_acpi_dependency.py','install_early_fb.py','configure_hp_amfi.py'):
             copy(REPO / 'install' / name, p / name)
@@ -176,6 +176,8 @@ def assemble(a):
         guide=guide.replace('](760M_STATUS.md)','](docs/760M_STATUS.md)')
         (p / 'INSTALL.md').write_text(guide)
         copy(REPO / 'tools/collect_macos_evidence.py', p / 'collect_macos_evidence.py')
+        copy(REPO / 'tools/collect_hardware.py', p / 'collect_hardware.py')
+        copy(REPO / 'hardware/devices', p / 'hardware/devices')
         copy(REPO / 'tools/package_manifest.py', p / 'package_manifest.py')
         (p / 'README.txt').write_text('NullArc 760M development stack, macOS '+a.min_macos+'+\n'
             'HP boots diagnostic-only; explicit local-admin bootstrap experiment available.\n'

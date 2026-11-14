@@ -1535,3 +1535,30 @@ permissions and owner selection. That regression and Python 3.9 syntax checks
 pass. Only operator-helper home files were updated; installed startup/native
 files, authorization records and NVRAM were not rewritten during this correction.
 First and second accelerated persistence boots remain pending.
+
+
+## 2026-11-14 — Hardware profiles, discovery and ACPI backlight source
+
+- Added shared compiled board contracts and kernel/accelerator/framebuffer gates.
+  Unknown identities no longer inherit Firebat writes/capabilities. HP native39
+  and exact captured Firebat identities retained; HP persistence scripts unchanged.
+- Split memory/display constraints from validators, including additional reserved
+  intervals, scanout offset, register locations and non-HP geometry fixtures.
+- Added macOS/Linux collector and installer `--hardware-report`; Linux DRM helper
+  collection accepts manufacturers generically and autodetects render nodes.
+- Mesa patch 0014 dispatches measured capabilities by validated topology/profile;
+  unknown or inconsistent profiles fail enumeration. Translator source unchanged.
+- Implemented ACPI native backlight parameter handler, unique internal routing,
+  EDID/level checks, bounded worker transitions, readback failure latch, power-target
+  preservation and PCI/panel-bound optional NVRAM record. PWM/AUX and nonstandard
+  OEM keyboard notification backends are unimplemented.
+- Full host suite, Mesa C profile/patch roundtrip and transport tests, native kext
+  builds and 8/12-CU mocked Vulkan/ACO compilation pass. Zero GPU submissions in
+  these tests; no new runtime acceleration claim. The new collector parsed the
+  actual HP's read-only PCI snapshot; ACPI inventory shows LCD@110, not brightness
+  method verification.
+- No installed HP/system/EFI/native file was changed. The pending persistence
+  display boots, candidate HP acceleration regression, native slider/keyboard,
+  reboot brightness retention and sleep/wake remain physical hardware tests.
+  Other manufacturers remain diagnostic-only pending reviewed live evidence and
+  boot preflight integration. See HARDWARE_SUPPORT.md for exact scope and sources.

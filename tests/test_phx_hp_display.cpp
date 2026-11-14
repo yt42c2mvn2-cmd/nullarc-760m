@@ -38,6 +38,19 @@ int main() {
     assert(!valid(1919) && !valid(1920,1199) && !valid(1920,1200,7684) && !valid(1920,1200,7680,24));
     m.physical_base+=4096;assert(!valid());m.physical_base-=4096;
     m.cpu_aperture_bytes=4096;assert(!valid());m.cpu_aperture_bytes=256ull<<20;
+    // Synthetic profile: the shared planner has no HP geometry/address assumption.
+    // This is parser/policy coverage, not evidence for a second physical laptop.
+    PhxMemoryProfile alternativeMemory=phx_hp_memory_profile;
+    alternativeMemory.physical_base=0x300000000ull;
+    PhxDisplayProfile alternative=phx_hp_display_profile;alternative.memory=&alternativeMemory;
+    alternative.width=1280;alternative.height=800;alternative.pitch=5120;
+    alternative.htotal=1440;alternative.hsync_start=1328;alternative.hsync_end=1360;
+    alternative.vtotal=846;alternative.vsync_start=803;alternative.vsync_end=809;
+    phx_memory_layout other=m;other.raw_offset=0x300;other.physical_base=alternativeMemory.physical_base;
+    assert(phxDisplayProfilePlan(other,info,r[0],r[1],t[0],t[1],1280,800,5120,32,alternative,p));
+    assert(p.width==1280 && p.height==800 && p.scanout_bytes==4096000 && p.backing_physical==0x300000000ull);
+    assert(!phxDisplayProfilePlan(other,info,r[0],r[1],t[0],t[1],1920,1200,7680,32,alternative,p));
+    alternative.htotal=0xffffffff;assert(!phxDisplayProfilePlan(other,info,r[0],r[1],t[0],t[1],1280,800,5120,32,alternative,p));
     info.extraDecoded=false;assert(!valid());
     puts("[PASS] captured HP console plan, timing identity, geometry and reservation rejection");
 }

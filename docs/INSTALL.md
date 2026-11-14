@@ -420,3 +420,19 @@ requests/NVRAM and protected reports. Do not retry a failed initialization in th
 same boot. Existing recovery flags cover specific older failures and must not be
 used to bypass this interrupted-boot review. No kext, RADV, Metal plugin, security
 setting, OpenCore configuration or display-register update is needed.
+
+
+## Other laptops and brightness development
+
+Before installation on another laptop, run `python3 tools/collect_hardware.py
+--output ~/nullarc-hardware.json` from the source tree, or `./install.sh
+--hardware-report ~/nullarc-hardware.json` from a newly assembled package.
+No sudo, kext load or GPU initialization is performed. An unreviewed board is
+blocked from native acceleration installation and display arming. Do not substitute
+its PCI IDs into the HP scripts or use the Firebat installer as a fallback.
+
+This source adds a native ACPI brightness bridge, but the published beta and HP
+installation do not contain it. No brightness success or additional manufacturer
+is verified. Hardware testing needs a separately reviewed candidate update;
+do not replace a working stack merely to run the read-only collector. See
+[hardware contracts and backlight limitations](HARDWARE_SUPPORT.md).
