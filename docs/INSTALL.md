@@ -21,8 +21,8 @@ do not establish HP compatibility.
 | Reference 780M on Tahoe | Existing acceleration installer is included; this source build has not been runtime-validated there |
 
 Linux tests executed translated compute and graphics shaders on the HP. Build 39 now also passes native macOS GPU and public Metal compute/render readbacks. The corrected resource46 stack also reached the accelerated desktop.
-The new Sequoia display-development package provides a staged one-shot
-`sudo ./install.sh --windowserver` experiment, described below. Older packages
+The Sequoia display-development package provides a staged, guarded persistent
+`sudo ./install.sh --windowserver` configuration, described below. Older packages
 still refuse this mode on HP. Safari latency, video performance and game tearing
 remain unresolved; this is not full device support.
 
@@ -140,17 +140,19 @@ It then requires Metal readbacks and live framebuffer-client/present evidence.
 Before releasing the panel it snapshots WindowServer crash reports. A new
 same-boot report aborts the experiment while waiting for login or presents;
 historical, other-boot and incomplete reports do not trigger that check.
-Failure disables retries; if the custom framebuffer owns the panel, it requests
-one reboot into the firmware framebuffer. A kernel/GPU fault can still require
+Failure disables retries, removes the permanent authorization and any pending
+next-boot arming, and if the custom framebuffer owns the panel requests one reboot
+into the firmware framebuffer. If NVRAM cannot be cleared, automatic fallback
+reboot is withheld for manual recovery. A kernel/GPU fault can still require
 a manual power cycle. The consumed flag and failure markers prevent a repeated
 accelerated-display boot. No WindowServer compatibility is claimed until the HP
 runtime results and visible desktop have been checked.
 
-To cancel a staged display request before reboot (local administrator):
+To disable persistent WindowServer arming and cancel a staged reboot (local administrator):
 
 ```sh
 sudo nvram -d phxfb-boot
-sudo rm -f /var/db/nullarc-760m/windowserver-next-boot.json
+sudo rm -f /var/db/nullarc-760m/windowserver-next-boot.json /var/db/nullarc-760m/windowserver-persistent.json
 ```
 
 Keep the printed `/var/db/nullarc-760m/display-update-*` backup. Do not remove
@@ -195,6 +197,53 @@ python3 collect_macos_evidence.py --output "$HOME/Desktop/hp-760m-diagnostics"
 The expected HP stage is `profile-diagnostic-only`. A loaded service, successful
 copy or firmware framebuffer does not prove GPU acceleration. If the kext is
 absent, keep the boot log and collector report for the next engineering stage.
+
+## HP: fresh file installation from the release ZIP
+
+The **compiled ZIP contains the drivers and dependencies**: PhxAccel.kext,
+NVMTLDriver.bundle, AIR translator, RADV, AMD firmware, and command-line tools.
+The `--windowserver` option does **not** install them from scratch: it verifies
+that the running native stack matches the extracted package and then authorizes
+the next guarded display boot. An older Codex-installed plugin may differ from
+the public release even if the installed Metal stack works.
+
+For a deliberate replacement of the **installed file components** from a
+verified release, use the new standalone staging mode **from an idle HP
+diagnostic-only firmware-framebuffer boot**:
+
+```sh
+./install.sh --fresh-files --check
+sudo ./install.sh --fresh-files
+```
+
+This mode verifies package integrity and the exact HP diagnostic profile;
+it refuses active NMXAccel/PhxAMDFB, a running supervisor, an armed display
+request, or a conflicting reference boot daemon. It creates a rollback backup
+under `/Users/Shared/nullarc-component-backups/`, archives the recognized
+`local.nullarc.hp-native.plist` boot service within the backup, and stages the
+ZIP's PhxAccel, NVMTLDriver, nvmtl/RADV, firmware and GPU tools.
+
+It does **not** replace the EFI's PhxBringup.kext, rebuild the auxiliary
+kernel collection, register a new launch daemon, initialize the GPU, or
+arm WindowServer. It does not delete `pending` / `disabled` safeguards or
+boot reports. Reboot and validate the matching kext and Metal stack using the
+separate documented stages before installing a new `--hp-native` service or
+requesting `--windowserver`. Do not replace a working modified NVMTLDriver
+unless you intend to switch to the packaged release build.
+
+To restore the previous component files and archived service (only if the
+staged components have not been changed since installing), use the printed
+backup directory:
+
+```sh
+sudo python3 -B install_components.py --restore /Users/Shared/nullarc-component-backups/backup-EXAMPLE
+```
+
+Fresh file staging is **not** a one-command fresh acceleration install. Start
+with the `--diagnostics --oc ...` stage if the matching diagnostic
+PhxBringup.kext is not already present, then follow the manual native bootstrap
+and app-mode validation stages below. The firmware fallback and failure
+safeguards remain in place.
 
 ## HP: opt-in app acceleration after reboot
 

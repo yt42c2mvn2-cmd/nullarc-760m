@@ -1562,3 +1562,11 @@ First and second accelerated persistence boots remain pending.
   reboot brightness retention and sleep/wake remain physical hardware tests.
   Other manufacturers remain diagnostic-only pending reviewed live evidence and
   boot preflight integration. See HARDWARE_SUPPORT.md for exact scope and sources.
+
+Integration audit: merged current fork main `d017ecf` into this development branch
+without changing main. Preserved its fresh-file installer, release guide, startup
+IORegistry readiness wait and narrowly scoped recovery. Retained the later
+persistence safety repair. Updated legacy persistence test expectations for the
+required current-boot success report, and corrected a fresh-file rollback fault
+injection to compare canonical paths. The combined suite passes 180 Python
+cases plus 15 C/C++ suites. No live system files were changed.
