@@ -1520,3 +1520,18 @@ records and the one-shot NVRAM flag, after checking current app validation and
 unchanged native groups. It changes no native/EFI files. Reboot only after READY
 FOR PERSISTENT DISPLAY REBOOT, log in, and collect current-boot presentation and
 successor-request evidence. The first/second accelerated boots are still pending.
+
+The authorization helper reached its final report export, then raised TypeError:
+install_diagnostics.atomic_write requires bytes, but the helper passed JSON text.
+This was an operator-helper error, not a GPU or rearming failure. The protected
+authorization receipt write and validate_schedule had already succeeded. Read-only
+SSH inspection confirms phxfb-boot=1 on the unchanged 5BA4BD11 app-verified boot.
+Do not rerun authorization; the next step is the already-armed display reboot.
+
+Both user-home operator helpers now encode exported JSON as UTF-8 bytes. The
+arming helper is versioned as tools/phxctl/hp_arm_persistence.py, with a regression
+that exercises the actual binary atomic writer and checks roundtrip data, 0600
+permissions and owner selection. That regression and Python 3.9 syntax checks
+pass. Only operator-helper home files were updated; installed startup/native
+files, authorization records and NVRAM were not rewritten during this correction.
+First and second accelerated persistence boots remain pending.
