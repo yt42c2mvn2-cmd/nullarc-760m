@@ -1421,3 +1421,13 @@ tests pass, including rollback, concurrent edits and unrelated-native rejection.
 The full test suite passes. Actual new-plugin WindowServer behavior remains
 pending its explicit next-boot experiment; first-use specialization delays and
 other reported display defects are not claimed fixed.
+
+The cache50 display candidate ZIP is staged on the HP under
+/Users/Shared/nullarc-760m-sequoia-test/nullarc-760m-0.2.1-sequoia-cache50-test.zip.
+SHA-256: 2f99b67d6ef820ebd0c4b11d1e357ba36b7580be01cd38e3eced435c9ab39d8e.
+Its 91 files, executable modes and bundle signature passed HP checks. The installed
+bundle fully matches the existing immutable beta package. Source commit 4100e24
+is included in this private test ZIP. No new public release has been published.
+The local-sudo hp50-install-cache.sh wrapper is staged; reboot is requested only
+if it prints READY FOR GUARDED CACHE DISPLAY TEST. Installation and the actual
+WindowServer retest are pending the user's next action.
